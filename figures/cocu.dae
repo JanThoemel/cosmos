@@ -103,7 +103,7 @@
   </library_lights>
   <library_images>
     <image id="Endurosat-1U-cubesat-solar-Panel-white-Z_CUT_png" name="Endurosat-1U-cubesat-solar-Panel-white-Z_CUT_png">
-      <init_from>C:\Users\janth\Desktop\formationflight\cosmos\figures\solarpanel.png</init_from>
+      <init_from>solarpanel.png</init_from>
     </image>
   </library_images>
   <library_effects>
