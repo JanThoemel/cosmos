@@ -100,11 +100,9 @@ while currenttime<totaltime
   end
   for i=1:ns            %% solve ODE
     [t,x]=ode23(@(t,x) hcwequation(t,x,IR,P,A,B,xd(:,i,:),currenttime,tspan),tspan,ssttemp(:,i,size(ssttemp,3)),opts);
-    ssttemp(:,i,:)=x'; %% columns: statevector, rows: (x,y,z,u,v,w), depth: timeevolution 
+    ssttemp(:,i,:)=x';  %% columns: statevector, rows: (x,y,z,u,v,w), depth: timeevolution 
     [a1 anglestemp(:,i,:)]=hcwequation(t,x',IR,P,A,B,xd(:,i,:),currenttime,tspan);
-    %angles2
     clear hcwequation
-    %input('--------------------new satellite------------')
   end
   sst=cat(3,sst,ssttemp(:,:,2:end));  
   angles=cat(3,angles,anglestemp(:,:,2:end));  
@@ -150,32 +148,6 @@ end
 %visualization(ns,ttime,squeeze(sst(1,:,:)),squeeze(sst(2,:,:)),squeeze(sst(3,:,:)),altitude,anglesX, modelfilename,radiusOfEarth,mu)
 visualization(ns,ttime,squeeze(sst(1,:,:)),squeeze(sst(2,:,:)),squeeze(sst(3,:,:)),altitude,angles, modelfilename,radiusOfEarth,mu)
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-function [P,IR,A,B]=riccatiequation(omega)
-
-    %R=diag([1e-13 1e-14 1e-14]);
-    R=diag([1e13 1e14 1e14]);
-    Q=eye(6);
-
-    E=eye(3);
-    Z=zeros(3,3);
-    C=[0 0 0; 0 -omega^2 0;0 0 3*omega^2];
-    D=[0 0 -2*omega;0 0 0;2*omega 0 0];
-
-    A=[Z E; C D];
-    B=[Z;E];
-    IR=inv(R);
-
-    %%https://nl.mathworks.com/help/control/ref/care.html
-    %% the function care is replaced by icare in later matlab versions
-    S=zeros(6,3);
-    E2=eye(6);
-    [P,L,G] = care(A,B,Q,R,S,E2);
-
-end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -183,7 +155,6 @@ end
 
 function [dxdt angles] =hcwequation(t,x,IR,P,A,B,xdi,currenttime,timespan)
 %% HCW equation
-
     persistent ang;
     persistent timearray;
     %timearray=0;
@@ -206,26 +177,22 @@ function [dxdt angles] =hcwequation(t,x,IR,P,A,B,xdi,currenttime,timespan)
     
     umax=k*1.2/satmass;
     uyzmax=k*0.24/satmass;
-    %input('a ')
-    u=u1;;%-[umax/2 0 0]'; %% to set u to a default value and size u correctly
-    %umax
-    
+
+    u=u1;%-[umax/2 0 0]'; %% to set u to a default value and size u correctly
+
     for i=1:size(u1,2)      
       if u1(1,i)>=1/2*umax
         u(1,i)=1/2*umax;
         u(2,i)=0;
         u(3,i)=0;
-        %printf('1\n')
        elseif u1(1,i)<=-1/2*umax
         u(1,i)=-1/2*umax;
         u(2,i)=0;
         u(3,i)=0;
-        %printf('2\n')
       %elseif sqrt(u(2,i)^2+u(3,i)^2)>uyzmax
       %  u(1,i)=-0.8;
-     %   u(2,i)=u1(2,i)/uyzmax;
-     %   u(3,i)=u1(3,i)/uyzmax;
-        %printf('3\n')
+      %  u(2,i)=u1(2,i)/uyzmax;
+      %  u(3,i)=u1(3,i)/uyzmax;
       end
     end
     anglestemp(1,:)=asind(1/1.2*u(1,:)/k)+asind(1/1.2*umax/k);
@@ -724,4 +691,31 @@ function [E] = anom_ecc(M,e)
     % trovato E con un errore inferiore a 0.1*10^(-4);
     %fprintf(' La soluzione E è stata trovata nell''intervallo [%2.5f,%2.5f]',sx,dx);
     %fprintf(' \n errore inferiore a %1.2e: [rad] E = %3.5f',err,E);
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+function [P,IR,A,B]=riccatiequation(omega)
+
+    %R=diag([1e-13 1e-14 1e-14]);
+    R=diag([1e13 1e14 1e14]);
+    Q=eye(6);
+
+    E=eye(3);
+    Z=zeros(3,3);
+    C=[0 0 0; 0 -omega^2 0;0 0 3*omega^2];
+    D=[0 0 -2*omega;0 0 0;2*omega 0 0];
+
+    A=[Z E; C D];
+    B=[Z;E];
+    IR=inv(R);
+
+    %%https://nl.mathworks.com/help/control/ref/care.html
+    %% the function care is replaced by icare in later matlab versions
+    S=zeros(6,3);
+    E2=eye(6);
+    [P,L,G] = care(A,B,Q,R,S,E2);
+
 end
