@@ -1,7 +1,11 @@
-%% do what Ivanov did:
+%% the Science of the Operations of Mini Satellite fOrmations and Constellations
+%% COSMOS V0.1
+
+%% based on: 
 %% Deployment and Maintenance of Nanosatellite Tetrahedral Formation Flying Using Aerodynamic Forces
 %% 69th International Astronautical Congress (IAC), Bremen, Germany, 1-5 October 2018.
 
+%% Revision history:
 %% 20/04/2019:  runs arbitrary number of satellites with HCW equation without control, looks much like fig 9 of Ivanov
 %% 04/05/2019:  LQR control implemented but without aerodynamics 
 %% 09/05/2019: aerodynamics in local-x direction,i.e. pitch implemented, correctness to be checked
@@ -14,36 +18,36 @@
 %% SGP4
 
 clear all;close all;%format long;
-%pkg load control
-altitude=340000; % in m
-density=1e-8;
-radiusOfEarth=6371000; %% in m;
-sc=2; %% scale for second configuration; scales also figure
 
-%%satelliteshapeproperties, number of 10cmx10cm faces to x,y,z(body coordinates):
-faces=[1 1 3];
+altitude=340000;        %% in m
+density=1e-8;
+radiusOfEarth=6371000;  %% in m;
+sc=2;                   %% scale for second configuration; scales also figure
+
+%%satelliteshapeproperties, number of 10cmx10cm faces to x,y,z(body coordinates, normally aligned with):
+faces=[1 3 3];
 modelfilename=strcat('figures',filesep,'cocu.dae');
 
-mu=3.986004418E14; %% in m3?s?2
+mu=3.986004418E14;      %% in m3?s?2
 r0=radiusOfEarth+altitude; %% in m
 omega=sqrt(mu/r0^3);
 [P,IR,A,B]=riccatiequation(omega);
 
+ns=2;                   %% number of satellites
 
-ns=2; %% number of satellites
 %% scaling factor
-CCC=1000; %% size of formation
-CCCC=1000; %% deployment
+CCC=1000;               %% size of formation
+CCCC=1000;              %% deployment
 
 %% timespan to simulate
-totaltime=16*60*60; %% 
-currenttime=0;
+totaltime=16*60*60;     %% in s
+currenttime=0;          %%
 ttime=[0];
-tspan=0:60:1800; %% duration and interpolation timestep for each control loop. ODE45 chooses its one optimal timestep. 150s total duration is consistent with Ivanov
+tspan=0:60:1800;        %% duration and interpolation timestep for each control loop. ODE45 chooses its one optimal timestep. 150s total duration is consistent with Ivanov
 %angles(ns,size(tspan,1));
 %size(angles)
-%% initial conditions to ODE
-sst=zeros(6,ns);%% columns: statevector per each satellite
+%% initial conditions of ODE
+sst=zeros(6,ns);        %% columns: statevector per each satellite
 ssttemp=zeros(6,ns,size(tspan,2));
 anglestemp=zeros(3,ns,size(tspan,2));
 angles=zeros(3,ns);
@@ -58,9 +62,10 @@ for i=1:ns
     %sst(:,2)=[15 0 0 0.005 0.015 0.015]';
 end
 sst(:,:)=ssttemp(:,:,end);
+
 %% solving the ODE for each control step
 
-%%desired statevector
+%% desired statevector I
 AAA=100;
 DDD=115;
 xd=zeros(6,ns,size(tspan,2)); %% columns: desired statevector per each satellite
@@ -70,8 +75,8 @@ opts = odeset('RelTol',1e-2,'AbsTol',1e-4);
 
 tic
 while currenttime<totaltime
-
-  if currenttime<8*60*60
+  if currenttime<8*60*60    %% initial desired vector
+    %% desired statevector II
     xd(1,1,:)=CCC*DDD;
     xd(1,2,:)=-CCC*DDD;
     %xd(1,3,:)=CCC*2*AAA*cos(omega*(currenttime+tspan)-acos(1/3));
@@ -81,7 +86,7 @@ while currenttime<totaltime
     %xd(1,4,:)=CCC*2*AAA*cos(omega*(currenttime+tspan));
     %xd(2,4,:)=CCC*AAA*sqrt(3)*sin(omega*(currenttime+tspan)+acos(1/3));
     %xd(3,4,:)=CCC*AAA*sin(omega*(currenttime+tspan));
-  else
+  else                      %% switch to new desired statevector
     xd(1,1,:)=sc*CCC*DDD;
     xd(1,2,:)=sc*-CCC*DDD;
     
@@ -91,28 +96,25 @@ while currenttime<totaltime
     
     xd(1,4,:)=sc*CCC*2*AAA*cos(omega*(currenttime+tspan)-acos(5/3));
     xd(2,4,:)=sc*CCC*AAA*sqrt(3)*sin(omega*(currenttime+tspan)+acos(1/3));
-    xd(3,4,:)=sc*CCC*AAA*sin(omega*(currenttime+tspan));
-    
-    
+    xd(3,4,:)=sc*CCC*AAA*sin(omega*(currenttime+tspan));   
   end
-    for i=1:ns        
-        [t,x]=ode23(@(t,x) hcwequation(t,x,IR,P,A,B,xd(:,i,:),currenttime,tspan),tspan,ssttemp(:,i,size(ssttemp,3)),opts);
-        ssttemp(:,i,:)=x'; %% columns: statevector, rows: (x,y,z,u,v,w), depth: timeevolution 
-        [a1 anglestemp(:,i,:)]=hcwequation(t,x',IR,P,A,B,xd(:,i,:),currenttime,tspan);
-        %angles2
-        clear hcwequation
-        %input('--------------------new satellite------------')
-    end
-    sst=cat(3,sst,ssttemp(:,:,2:end));  
-    angles=cat(3,angles,anglestemp(:,:,2:end));  
-    ttime=[ttime ; currenttime+t(2:end)];  
-    if currenttime>0
-        fprintf('\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b')
-    end
-    currenttime=ttime(end);
-    fprintf('time %2.1e / totaltime %2.1e, progress %2.1e %%', currenttime, totaltime,currenttime/totaltime*100);
-    %input('--------------------new iteration------------')
-
+  for i=1:ns            %% solve ODE
+    [t,x]=ode23(@(t,x) hcwequation(t,x,IR,P,A,B,xd(:,i,:),currenttime,tspan),tspan,ssttemp(:,i,size(ssttemp,3)),opts);
+    ssttemp(:,i,:)=x'; %% columns: statevector, rows: (x,y,z,u,v,w), depth: timeevolution 
+    [a1 anglestemp(:,i,:)]=hcwequation(t,x',IR,P,A,B,xd(:,i,:),currenttime,tspan);
+    %angles2
+    clear hcwequation
+    %input('--------------------new satellite------------')
+  end
+  sst=cat(3,sst,ssttemp(:,:,2:end));  
+  angles=cat(3,angles,anglestemp(:,:,2:end));  
+  ttime=[ttime ; currenttime+t(2:end)];  
+  if currenttime>0
+    fprintf('\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b')
+  end
+  currenttime=ttime(end);
+  fprintf('time %2.1e / totaltime %2.1e, progress %2.1e %%', currenttime, totaltime,currenttime/totaltime*100);
+  %input('--------------------new iteration------------')
 end
 figure
 plot(squeeze(ttime),squeeze(angles(1,1,:)),squeeze(ttime),squeeze(angles(1,2,:)))
@@ -123,7 +125,7 @@ for i=1:ns
       anglesX(j,i,k)=89*cos(2*pi/60/30*ttime(k)+i*pi/3+j*3/5*pi); %heading
       anglesX(j,i,k)=89*sin(2*pi/60/30*ttime(k)+i*pi/3+j*3/5*pi); %tilt %roll would be the third component, not specified here
     end
-   end
+  end
 end
 
 %printf('\n');
@@ -148,6 +150,10 @@ end
 %visualization(ns,ttime,squeeze(sst(1,:,:)),squeeze(sst(2,:,:)),squeeze(sst(3,:,:)),altitude,anglesX, modelfilename,radiusOfEarth,mu)
 visualization(ns,ttime,squeeze(sst(1,:,:)),squeeze(sst(2,:,:)),squeeze(sst(3,:,:)),altitude,angles, modelfilename,radiusOfEarth,mu)
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 function [P,IR,A,B]=riccatiequation(omega)
 
     %R=diag([1e-13 1e-14 1e-14]);
@@ -171,7 +177,13 @@ function [P,IR,A,B]=riccatiequation(omega)
 
 end
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 function [dxdt angles] =hcwequation(t,x,IR,P,A,B,xdi,currenttime,timespan)
+%% HCW equation
+
     persistent ang;
     persistent timearray;
     %timearray=0;
@@ -216,7 +228,6 @@ function [dxdt angles] =hcwequation(t,x,IR,P,A,B,xdi,currenttime,timespan)
         %printf('3\n')
       end
     end
-    
     anglestemp(1,:)=asind(1/1.2*u(1,:)/k)+asind(1/1.2*umax/k);
     anglestemp(2,:)=0;
     anglestemp(3,:)=0;
@@ -227,53 +238,30 @@ function [dxdt angles] =hcwequation(t,x,IR,P,A,B,xdi,currenttime,timespan)
      ang=anglestemp;
     end
     angles=ang;
-
     dxdt=A*x+B*u;
-
 end
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 function visualization(ns,ttime,sstx,ssty,sstz,altitude,angles,modelfilename,radiusOfEarth,mu)
-    %% INTRO
-    %clear all
-    %close all
-    %clc
-
     %this function works with km instead of m %!harmonize
-
     RE = radiusOfEarth/1000;          % Earth's radius                            [km]
-
-    %muE = 398600.44;    % Earth gravitational parameter             [km^3/sec^2]
     muE = mu/1e9;    % Earth gravitational parameter             [km^3/sec^2]
     wE = (2*pi/86164);  % Earth rotation velocity aorund z-axis     [rad/sec]
-    disp(' GROUND TRACK AND VIEW 3D OF ORBIT');
-    disp(' *************************************************************************************************** ');
-    disp(' ');
-
     %% ORBIT INPUT
-    disp(' ORBIT DATA ');
-    %RAAN    = input(' Right Ascension of Ascendent Node    [  0,360[    RAAN   [deg] = ');
-    RAAN=0;
-    %w       = input(' Argument of perigee                  [  0,360[    w      [deg] = ');
-    w=0;
-    %v0      = input(' True anomaly at the departure        [  0,360[    v0     [deg] = ');
-    v0=0;
-    %i       = input(' Inclination                          [-90, 90]    i      [deg] = ');
-    inclination=89.999999;
-    %a       = input(' Major semi-axis                       (>6378)     a      [km]  = ');
-    a=RE+altitude/1000;
+    RAAN=0; %%RAAN    = input(' Right Ascension of Ascendent Node    [  0,360[    RAAN   [deg] = ');    
+    w=0;    %%w       = input(' Argument of perigee                  [  0,360[    w      [deg] = ');
+    v0=0;   %%v0      = input(' True anomaly at the departure        [  0,360[    v0     [deg] = ');
+    inclination=89.999999;%i       = input(' Inclination                          [-90, 90]    i      [deg] = ');
+    a=RE+altitude/1000;%a       = input(' Major semi-axis                       (>6378)     a      [km]  = ');
     ecc_max = sprintf('%6.4f',1-RE/a);     % maximum value of eccentricity allowed
-    %e       = input([' Eccentricity                         (<',ecc_max,')    e            = ']);
-    e=0;
-    disp(' --------------------------------------------------------------------------------------------------- ');
-
-    % --------------------------------- CONV ---------------------------------%
+    e=0;%e       = input([' Eccentricity                         (<',ecc_max,')    e            = ']);
     RAAN  = RAAN*pi/180;        % RAAN                          [rad]
     w     = w*pi/180;           % Argument of perigee           [rad]
     v0    = v0*pi/180;          % True anomaly at the departure [rad]
     inclination     = inclination*pi/180;           % inclination                   [rad]
-    % ------------------------------------------------------------------------%
-
     %% ORBIT COMPUTATION
     rp = a*(1-e);               % radius of perigee             [km]
     ra = a*(1+e);               % radius of apogee              [km]
@@ -290,31 +278,14 @@ function visualization(ns,ttime,sstx,ssty,sstz,altitude,angles,modelfilename,rad
     n2 =  h1/(sqrt(h1^2+h2^2)); % y-component of nodes' line
     n3 = 0;                     % z-component of nodes' line
     N  = [n1,n2,n3];            % nodes' line (unit vector)
-
     %% PRINT SOME DATAS
     hours   = floor(T/3600);                   % hours   of the orbital period
     minutes = floor((T-hours*3600)/60);        % minutes of the orbital period
     seconds = floor(T-hours*3600-minutes*60);  % seconds of the orbital period
-    fprintf('\n Radius of perigee [%10.3f km]       Altitude of perigee [%10.3f km]',rp,rp-RE);
-    fprintf('\n Radius of  apogee [%10.3f km]       Altitude of  apogee [%10.3f km]',ra,ra-RE);
-    fprintf('\n Velocity at the perigee [%6.4f km/s]   Velocity at the apogee [%6.4f km/s]',Vp,Va);
-    fprintf('\n Orbital Period    [%3d h: %3d m: %3d s] ',hours,minutes,seconds);
-    fprintf('   = [%10.2f s]\n',T);
-
-    %% TIME
-    %norb = input(' Number of Orbits.     norb = ');  % number of orbits
-    %norb=3;
     t0   = 0;                                        % initial time          [s]
-    %tf   = norb*T;                                   % final   time          [s]  
     tf=ttime(end);
-    %step = input(' Time step.        [s] step = ');  % time step             [s]
-    step=60;
-    %? why the last step?
-    %t    = t0:step:tf+step;                          % vector of time        [s]
+    step=60;%step = input(' Time step.        [s] step = ');  % time step             [s]    
     t    = t0:step:tf;                          % vector of time        [s]
-    disp(' --------------------------------------------------------------------------------------------------- ');
-    disp(' ');
-
     %% DETERMINATION OF THE DYNAMICS
     cosE0 = (e+cos(v0))./(1+e.*cos(v0));               % cosine of initial eccentric anomaly
     sinE0 = (sqrt(1-e^2).*sin(v0))./(1+e.*cos(v0));    %   sine of initial eccentric anomaly
@@ -324,21 +295,18 @@ function visualization(ns,ttime,sstx,ssty,sstz,altitude,angles,modelfilename,rad
     end
     tp = (-E0+e.*sin(E0))./n+t0;                       % pass time at the perigee               [s]
     M  = n.*(t-tp);                                    % mean anomaly                           [rad]
-
     %% Mk = Ek - e*sin(Ek);
     % Eccentric anomaly (must be solved iteratively for Ek)
     E = zeros(size(t,2),1);
     for j=1:size(t,2)
         E(j) = anom_ecc(M(j),e);                     % eccentric anomaly         [rad]
     end
-
     %% True anomaly, Argument of latitude, Radius
     sin_v = (sqrt(1-e.^2).*sin(E))./(1-e.*cos(E));   % sine of true anomaly
     cos_v = (cos(E)-e)./(1-e.*cos(E));               % cosine of true anomaly
     v     = atan2(sin_v,cos_v);                      % true anomaly              [rad]
     theta = v + w;                                   % argument of latitude      [rad]
     r     = (a.*(1-e.^2))./(1+e.*cos(v));            % radius                    [km]
-
     %% Satellite coordinates
     % "Inertial" reference system ECI (Earth Centered Inertial)
     xp = r.*cos(theta);                          % In-plane x position (node direction)             [km]
@@ -347,7 +315,6 @@ function visualization(ns,ttime,sstx,ssty,sstz,altitude,angles,modelfilename,rad
     ys = xp.*sin(RAAN)+yp.*cos(inclination).*cos(RAAN);    % ECI y-coordinate SAT                             [km]
     zs = yp.*sin(inclination);                             % ECI z-coordinate SAT                             [km]
     rs = p./(1+e.*cos(theta-w));                 % norm of radius SAT                               [km]
-
     %% GREENWICH HOUR ANGLE
     disp(' From ephemeridis you can reach the greenwich hour angle at the epoch and reset it from Aries'' point');
     disp(' Ephemeridis Almanac: http://www.nauticalalmanac.it/it/astronomia-nautica/effemeridi-nautiche.html ');
@@ -357,18 +324,12 @@ function visualization(ns,ttime,sstx,ssty,sstz,altitude,angles,modelfilename,rad
     % negli almanacchi nautici in generale. Se non lo si conosce, o si intende
     % fare un'analisi approssimativa  è consigliabile immettere 0 in modo da
     % far coincidere il punto di ariete con Greenwich all'epoca.
-
     %greenwich0 = input(' Insert Greenwich longitude respect to the vernal axis. GHA [deg] = ');
     greenwich0=0;
-    disp(' --------------------------------------------------------------------------------------------------- ');
-
-
-
-
     %% SUB-SATELLITE-POINT
     greenwich0 = greenwich0*pi/180;                 % Greenwich hour angle at the initial time    [rad]
     rot_earth  = wE.*(t-t0)+greenwich0;             % Greenwich hour angle at the time t          [rad]
-    for j=1:size(t,2),
+    for j=1:size(t,2)
         if rot_earth(j) < (-pi)
             nn = ceil(rot_earth(j)/(-2*pi));
             rot_earth(j) = rot_earth(j) + nn*2*pi;
@@ -383,35 +344,26 @@ function visualization(ns,ttime,sstx,ssty,sstz,altitude,angles,modelfilename,rad
       sstyvgrid(j,:)=interp1(ttime,ssty(j,:),t);
       sstzvgrid(j,:)=interp1(ttime,sstz(j,:),t);
     end
-
-    %footprintsize=zeros(size(ttime,2));
-
     for j=1:size(ttime,1)
       for i=1:ns
         MAXY=sqrt(max(sstxvgrid(i,j)^2+sstyvgrid(i,j)^2));
       end
       footprintsize(j)=round(  MAXY/10^floor(log10(MAXY)) )  *  1e5;
-      %footprintsize(j)=1e5;;
     end
-
     %% centerpoint
     Lat(1,:)     =  asin(sin(inclination).*sin(theta))/pi*180;              % Latitude             [deg]
     Long(1,:)    = (atan2(ys./rs,xs./rs)-rot_earth')/pi*180;    % Longitude            [deg]
     rs2(1,:)         = rs;                                        % radius                [km]
-
     %% satellites
     for j=1:ns
       ii(j,:)      = asin(  sstxvgrid(j,:)/1000  ./  (rs(:,1)'  + sstzvgrid(j,:)/1000) ); %%latitude offset
       ll(j,:)      = asin( sstyvgrid(j,:)/1000   ./   (rs(:,1)' + sstzvgrid(j,:)/1000) ); %%longitude offset
     end
-
     for j=2:ns+1 
       Lat(j,:)     = Lat(1,:)+ii(j-1,:)/pi*180;               % Latitude             [deg]
       Long(j,:)    = Long(1,:)+ll(j-1,:)/pi*180;    % Longitude            [deg]
       rs2(j,:)     = rs(:)'+sstzvgrid(j-1,:)/1000;                                    % radius                [km]
     end
-
-
     %figure
     %subplot(3,1,1)
     %for j=1:ns
@@ -462,6 +414,10 @@ function visualization(ns,ttime,sstx,ssty,sstz,altitude,angles,modelfilename,rad
    
 end
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 function writeKML(Lat,Long,rs,t,ns,angles,modelfilename,footprintsize)
 %function writeKML(Lat,Long,rs,t,ns,angles,modelfilename)
   
@@ -484,13 +440,10 @@ function writeKML(Lat,Long,rs,t,ns,angles,modelfilename,footprintsize)
   tourjumpduration(2:end)=(t(2:end)-t(1:end-1))/accelerationfactor;
   filename='cosmos.kml';
   USpoints=5;
-
-
   for ii=1:3
     counter=0;
     counter2=0;
-
-  %% add pole points
+    %% add pole points
       for i=2:size(t,2)-1
           counter2=counter2+1;
           if counter~=0&&counter2==3
@@ -531,20 +484,15 @@ function writeKML(Lat,Long,rs,t,ns,angles,modelfilename,footprintsize)
               fprintf('do something for the southpole point adding')
         end
        end
-    end
-  
-  
+  end
   for i=1:size(t,2) %% shift longitude from 0-360 deg to +/- 180
     for j=1:ns
       if Long(j,i)<-180
         Long(j,i)=Long(j,i)+360;
       end
     end
-  end
-  
-  
+  end 
   %%upper stage data
-  
   USLong=[-flip(Long(1,2:USpoints))'; Long(1,1:USpoints)'];
   USLat=[-flip(Lat(1,2:USpoints))'; Lat(1,1:USpoints)'];
   USrs=[flip(rs(1,2:USpoints))'; rs(1,1:USpoints)'];
@@ -698,8 +646,6 @@ function writeKML(Lat,Long,rs,t,ns,angles,modelfilename,footprintsize)
         end 
         fprintf(id,'\n  </gx:Track></Placemark>');
    end
-
- 
     k=1;
     while k<size(footprintsize,2)
          fprintf(id,'\n<Placemark><name>centerpoint</name><styleUrl>#stylesel_0</styleUrl>>');     
@@ -718,13 +664,14 @@ function writeKML(Lat,Long,rs,t,ns,angles,modelfilename,footprintsize)
          fprintf(id,'\n</Placemark>');  
          k=k+1;
     end
- 
- 
     fprintf(id,'\n  </Folder>');
     fprintf(id,'\n </kml>');
     fclose(id);
 end
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 function [E] = anom_ecc(M,e)
     % function [E] = anom_ecc(M,e) 
