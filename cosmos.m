@@ -194,7 +194,7 @@ function [dxdt angles] =hcwequation(t,x,IR,P,A,B,xdi,currenttime,timespan)
       %  u(2,i)=u1(2,i)/uyzmax;
       %  u(3,i)=u1(3,i)/uyzmax;
       end
-    end
+    end 
     anglestemp(1,:)=asind(1/1.2*u(1,:)/k)+asind(1/1.2*umax/k);
     anglestemp(2,:)=0;
     anglestemp(3,:)=0;
