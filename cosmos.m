@@ -11,6 +11,7 @@
 %% 09/05/2019: aerodynamics in local-x direction,i.e. pitch implemented, correctness to be checked
 %%
 %% todo:
+%% implement J2
 %% implement aerodynamics and visualization of angles
 %% arbitrary inclinations
 %% clean up of code
