@@ -16,7 +16,7 @@
 %% arbitrary inclinations
 %% clean up of code
 %% eliptical orbits
-%% SGP4
+%% SGP4 
 
 clear all;close all;%format long;
 
