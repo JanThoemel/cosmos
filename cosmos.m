@@ -17,6 +17,7 @@
 %% clean up of code
 %% eliptical orbits
 %% SGP4 
+%% compute moment coefficients and moments
 
 clear all;close all;%format long;
 
