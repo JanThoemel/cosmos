@@ -19,7 +19,7 @@
 %% SGP4 
 %% compute moment coefficients and moments
 
-clear all;close all;%format long;
+clear all;close all;clc;%format long;
 
 altitude=340000;        %% in m
 density=1e-8;
@@ -120,9 +120,23 @@ while currenttime<totaltime
 end
 toc
 
-figure
-    plot(squeeze(ttime),squeeze(angles(1,1,:)),squeeze(ttime),squeeze(angles(1,2,:)))
 
+figure
+   subplot(3,1,1)%% pitch
+     for i=1:ns
+       plot(squeeze(ttime),squeeze(angles(1,i,:)))
+       hold on
+    end
+    subplot(3,1,2)%%yaw
+    for i=1:ns
+       plot(squeeze(ttime),squeeze(angles(2,i,:)))
+       hold on
+    end
+    subplot(3,1,3)%%roll
+    for i=1:ns
+       plot(squeeze(ttime),squeeze(angles(3,i,:)))
+       hold on
+    end
 %%  plotting the results
 %{
 anglesX=zeros(3,ns,size(ttime,1));
@@ -203,16 +217,15 @@ function [dxdt,anglestemp] =hcwequation(t,x,IR,P,A,B,xdi,currenttime,timespan)
   %anglestempX(1,:)=asind(1/1.2*u(1,:)/k)+asind(1/1.2*umax/k);
   %anglestempX(2,:)=0;
   %anglestempX(3,:)=0;
-
-  anglestempX(1,:)=atand(u(3,:)./u(1,:));
-  anglestempX(2,:)=atand(u(2,:)./u(1,:));
-  anglestempX(3,:)=atand(u(3,:)./u(2,:));
+  anglestemptemp(1,:)=atand(u(3,:)./u(1,:));
+  anglestemptemp(2,:)=atand(u(2,:)./u(1,:));
+  anglestemptemp(3,:)=atand(u(3,:)./u(2,:));
   
   if size(ang,1)>2 && size(x,2)==1
-    ang=[ang  anglestempX];
+    ang=[ang  anglestemptemp];
     %  timearray=[timearray t];
   else
-    ang=anglestempX;
+    ang=anglestemptemp;
   end
   anglestemp=ang;
   dxdt=A*x+B*u;
