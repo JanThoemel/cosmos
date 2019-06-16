@@ -43,7 +43,7 @@ CCCC=1000;              %% deployment
 
 %% timespan to simulate
 totaltime=16*60*60;     %% in s
-currenttime=0;          %%
+currenttime=0;          %% now, should usually be 0
 ttime=[0];
 tspan=0:60:1800;        %% duration and interpolation timestep for each control loop. ODE45 chooses its one optimal timestep. 150s total duration is consistent with Ivanov
 %angles(ns,size(tspan,1));
@@ -51,9 +51,8 @@ tspan=0:60:1800;        %% duration and interpolation timestep for each control 
 %% initial conditions of ODE
 sst=zeros(6,ns);        %% columns: statevector per each satellite
 ssttemp=zeros(6,ns,size(tspan,2));
-anglestemp=zeros(3,ns,size(tspan,2));
 angles=zeros(3,ns);
-
+anglestemp=zeros(3,ns,size(tspan,2));
 for i=1:ns
     %ssttemp(:,i,end)=CCCC*[(i-1)*5 0 0 0 0 0]';
     ssttemp(:,i,end)=CCCC*[(i-1)*5 0 0 0.015 0.015 0.015]';
@@ -100,24 +99,32 @@ while currenttime<totaltime
     xd(2,4,:)=sc*CCC*AAA*sqrt(3)*sin(omega*(currenttime+tspan)+acos(1/3));
     xd(3,4,:)=sc*CCC*AAA*sin(omega*(currenttime+tspan));   
   end
-  for i=1:ns            %% solve ODE
+  for i=1:ns
+    %% solve ODE      
     [t,x]=ode23(@(t,x) hcwequation(t,x,IR,P,A,B,xd(:,i,:),currenttime,tspan),tspan,ssttemp(:,i,size(ssttemp,3)),opts);
     ssttemp(:,i,:)=x';  %% columns: statevector, rows: (x,y,z,u,v,w), depth: timeevolution 
+    %% get data out of ODE
     [a1,anglestemp(:,i,:)]=hcwequation(t,x',IR,P,A,B,xd(:,i,:),currenttime,tspan);
     clear hcwequation
   end
+  %% append data of last control loop to global data vector
   sst=cat(3,sst,ssttemp(:,:,2:end));  
   angles=cat(3,angles,anglestemp(:,:,2:end));  
   ttime=[ttime ; currenttime+t(2:end)];  
+  %% print progress of iterations to screen
   if currenttime>0
     fprintf('\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b')
   end
   currenttime=ttime(end);
   fprintf('time %2.1e / totaltime %2.1e, progress %2.1e %%', currenttime, totaltime,currenttime/totaltime*100);
-  %input('--------------------new iteration------------')
 end
+toc
+
 figure
-plot(squeeze(ttime),squeeze(angles(1,1,:)),squeeze(ttime),squeeze(angles(1,2,:)))
+    plot(squeeze(ttime),squeeze(angles(1,1,:)),squeeze(ttime),squeeze(angles(1,2,:)))
+
+%%  plotting the results
+%{
 anglesX=zeros(3,ns,size(ttime,1));
 for i=1:ns
   for j=1:2 %% two rotations
@@ -127,35 +134,32 @@ for i=1:ns
     end
   end
 end
+%}
 
-%printf('\n');
-toc
-%%  plotting the results
 figure
-for i=1:ns
-  plot3(squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'-')
-  hold on
-  names(i)=[{strcat('sat',int2str(i))}];
-end
-xlabel('X [m]');ylabel('Y [m]');zlabel('Z [m]');legend(names);grid on;hold off
-if 0
-  axis(sc*[-35e3 35e3 -35e3 35e3 -35e3 35e3])
-  xticks(sc*[-20e3 0 20e3])
-  yticks(sc*[-20e3 0 20e3])
-  zticks(sc*[-20e3 0 20e3])
-  set(gcf,'PaperUnits', 'inches','PaperPosition', [0 0 2 2]) ;
-  fprintf('2by2','-dpng','-r0')
-end
-    %% map on globe and create kml file
-%visualization(ns,ttime,squeeze(sst(1,:,:)),squeeze(sst(2,:,:)),squeeze(sst(3,:,:)),altitude,anglesX, modelfilename,radiusOfEarth,mu)
+    for i=1:ns
+      plot3(squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'-')
+      hold on
+      names(i)=[{strcat('sat',int2str(i))}];
+    end
+    xlabel('X [m]');ylabel('Y [m]');zlabel('Z [m]');legend(names);grid on;hold off
+    if 0
+      axis(sc*[-35e3 35e3 -35e3 35e3 -35e3 35e3])
+      xticks(sc*[-20e3 0 20e3])
+      yticks(sc*[-20e3 0 20e3])
+      zticks(sc*[-20e3 0 20e3])
+      set(gcf,'PaperUnits', 'inches','PaperPosition', [0 0 2 2]) ;
+      fprintf('2by2','-dpng','-r0')
+    end
+    
+%% map on globe and create kml file
 visualization(ns,ttime,squeeze(sst(1,:,:)),squeeze(sst(2,:,:)),squeeze(sst(3,:,:)),altitude,angles, modelfilename,radiusOfEarth,mu)
 
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [dxdt angles] =hcwequation(t,x,IR,P,A,B,xdi,currenttime,timespan)
+function [dxdt,anglestemp] =hcwequation(t,x,IR,P,A,B,xdi,currenttime,timespan)
 %% HCW equation
   persistent ang;
   persistent timearray;
@@ -196,16 +200,21 @@ function [dxdt angles] =hcwequation(t,x,IR,P,A,B,xdi,currenttime,timespan)
       %  u(3,i)=u1(3,i)/uyzmax;
     end
   end 
-  anglestemp(1,:)=asind(1/1.2*u(1,:)/k)+asind(1/1.2*umax/k);
-  anglestemp(2,:)=0;
-  anglestemp(3,:)=0;
+  %anglestempX(1,:)=asind(1/1.2*u(1,:)/k)+asind(1/1.2*umax/k);
+  %anglestempX(2,:)=0;
+  %anglestempX(3,:)=0;
+
+  anglestempX(1,:)=atand(u(3,:)./u(1,:));
+  anglestempX(2,:)=atand(u(2,:)./u(1,:));
+  anglestempX(3,:)=atand(u(3,:)./u(2,:));
+  
   if size(ang,1)>2 && size(x,2)==1
-    ang=[ang  anglestemp];
+    ang=[ang  anglestempX];
     %  timearray=[timearray t];
   else
-    ang=anglestemp;
+    ang=anglestempX;
   end
-  angles=ang;
+  anglestemp=ang;
   dxdt=A*x+B*u;
 end
 
