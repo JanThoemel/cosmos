@@ -10,30 +10,7 @@ phi=0:5:360;
 f1=bigaerodynamics(theta, phi,panels);
 [pitch yaw]=pitchyaw(theta, phi);
     
-%% plot
-figure;
-        subplot(1,3,1)
-        mesh(theta, phi, squeeze(f1(1,:,:))');
-        grid on;xlabel('\theta_{org}');ylabel('\phi_{org}');zlabel('fx_{org}');
-        subplot(1,3,2)
-        mesh(theta, phi, squeeze(f1(2,:,:))');
-        grid on;xlabel('\theta_{org}');ylabel('\phi_{org}');zlabel('fx_{org}');
-        subplot(1,3,3)
-        mesh(theta, phi, squeeze(f1(3,:,:))');
-        grid on;xlabel('\theta_{org}');ylabel('\phi_{org}');zlabel('fx_{org}');
 
-        %% plot
-        size(theta)
-        size(phi)
-        size(phi(36:73))
-        size(pitch)
-figure;
-        subplot(1,2,1)
-        mesh(theta, phi, pitch');
-        grid on;xlabel('\theta_{org}');ylabel('\phi_{org}');zlabel('pitch');axis([0 95 0 365 0 185]);
-        subplot(1,2,2)
-        mesh(theta, phi, yaw');
-        grid on;xlabel('\theta_{org}');ylabel('\phi_{org}');zlabel('yaw');axis([0 95 0 365 0 185]);
 
 
 
@@ -46,6 +23,25 @@ df(1,:)=f1(1,:)-f2(1);
 df(2,:)=f1(2,:)-f2(2);
 df(3,:)=f1(3,:)-f2(3);
 
+figure;
+        subplot(1,2,1)
+        mesh(theta, phi, pitch');
+        grid on;xlabel('\theta_{org}');ylabel('\phi_{org}');zlabel('pitch');axis([0 95 0 365 0 185]);
+        subplot(1,2,2)
+        mesh(theta, phi, yaw');
+        grid on;xlabel('\theta_{org}');ylabel('\phi_{org}');zlabel('yaw');axis([0 95 0 365 0 185]);
+
+%% plot
+figure;
+        subplot(1,3,1)
+        mesh(theta, phi, squeeze(df(1,:,:))');
+        grid on;xlabel('\theta_{org}');ylabel('\phi_{org}');zlabel('fx_{org}');
+        subplot(1,3,2)
+        mesh(theta, phi, squeeze(df(2,:,:))');
+        grid on;xlabel('\theta_{org}');ylabel('\phi_{org}');zlabel('fx_{org}');
+        subplot(1,3,3)
+        mesh(theta, phi, squeeze(df(3,:,:))');
+        grid on;xlabel('\theta_{org}');ylabel('\phi_{org}');zlabel('fx_{org}');
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
