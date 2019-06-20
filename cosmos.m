@@ -24,10 +24,10 @@ clear all;close all;clc;%format long;
 altitude=340000;        %% in m
 density=1e-8;
 radiusOfEarth=6371000;  %% in m;
-sc=2;                   %% scale for second configuration; scales also figure
+sc=1;                   %% scale for second configuration; scales also figure
 
 %%satelliteshapeproperties, number of 10cmx10cm faces to x,y,z(body coordinates, normally aligned with):
-faces=[1 3 3];
+faces=[1 0 0];
 modelfilename=strcat('figures',filesep,'cocu.dae');
 
 mu=3.986004418E14;      %% in m3?s?2
@@ -35,17 +35,17 @@ r0=radiusOfEarth+altitude; %% in m
 omega=sqrt(mu/r0^3);
 [P,IR,A,B]=riccatiequation(omega);
 
-ns=2;                   %% number of satellites
+ns=3;                   %% number of satellites
 
 %% scaling factor
-CCC=1000;               %% size of formation
-CCCC=1000;              %% deployment
+C3=100;               %% size of formation
+C4=100;               %% deployment
 
 %% timespan to simulate
-totaltime=16*60*60;     %% in s
+totaltime=0.5*60*60;     %% in s
 currenttime=0;          %% now, should usually be 0
 ttime=[0];
-tspan=0:60:1800;        %% duration and interpolation timestep for each control loop. ODE45 chooses its one optimal timestep. 150s total duration is consistent with Ivanov
+tspan=0:1:1800;        %% duration and interpolation timestep for each control loop. ODE45 chooses its one optimal timestep. 150s total duration is consistent with Ivanov
 %angles(ns,size(tspan,1));
 %size(angles)
 %% initial conditions of ODE
@@ -55,8 +55,8 @@ angles=zeros(3,ns);
 anglestemp=zeros(3,ns,size(tspan,2));
 for i=1:ns
     %ssttemp(:,i,end)=CCCC*[(i-1)*5 0 0 0 0 0]';
-    ssttemp(:,i,end)=CCCC*[(i-1)*5 0 0 0.015 0.015 0.015]';
-    ssttemp(:,i,end)=CCCC*[(i-1)*5 0 0 0.00015 0.00015 0.00015]';
+    ssttemp(:,i,end)=C4*[(i-1)*5 0 0 0.015 0.015 0.015]';
+    ssttemp(:,i,end)=C4*[(i-1)*5 0 0 0.00015 0.00015 0.00015]';
     %ssttemp(:,i,end)=CCCC*[(i-1)*5 0 0 rand*0.015 rand*0.015 rand*0.015]';
     %ssttemp(:,i,end)=CCCC*[(i-1)*0.5*10 0 0 0.0 0.015 0.015]';
     %sst(:,1)=[0 0 0 0.015 0.005 0.015]';
@@ -76,10 +76,12 @@ opts = odeset('RelTol',1e-2,'AbsTol',1e-4);
 
 tic
 while currenttime<totaltime
-  if currenttime<8*60*60    %% initial desired vector
+  if currenttime<16*60*60    %% initial desired vector
     %% desired statevector II
-    xd(1,1,:)=CCC*DDD;
-    xd(1,2,:)=-CCC*DDD;
+    xd(1,1,:)=C3*DDD;
+    xd(1,2,:)=-C3*DDD;
+    xd(2,3,:)=C3*AAA*sqrt(3)*sin(omega*(currenttime+tspan));
+
     %xd(1,3,:)=CCC*2*AAA*cos(omega*(currenttime+tspan)-acos(1/3));
     %xd(2,3,:)=CCC*AAA*sqrt(3)*sin(omega*(currenttime+tspan));
     %xd(3,3,:)=CCC*AAA*sin(omega*(currenttime+tspan)-acos(1/3));
@@ -88,24 +90,25 @@ while currenttime<totaltime
     %xd(2,4,:)=CCC*AAA*sqrt(3)*sin(omega*(currenttime+tspan)+acos(1/3));
     %xd(3,4,:)=CCC*AAA*sin(omega*(currenttime+tspan));
   else                      %% switch to new desired statevector
-    xd(1,1,:)=sc*CCC*DDD;
-    xd(1,2,:)=sc*-CCC*DDD;
+    xd(1,1,:)=sc*C3*DDD;
+    xd(1,2,:)=sc*-C3*DDD;
     
-    xd(1,3,:)=sc*CCC*2*AAA*cos(omega*(currenttime+tspan)-acos(-3/3));
-    xd(2,3,:)=sc*CCC*AAA*sqrt(3)*sin(omega*(currenttime+tspan));
-    xd(3,3,:)=sc*CCC*AAA*sin(omega*(currenttime+tspan)-acos(1/3));
+    xd(1,3,:)=sc*C3*2*AAA*cos(omega*(currenttime+tspan)-acos(-3/3));
+    xd(2,3,:)=sc*C3*AAA*sqrt(3)*sin(omega*(currenttime+tspan));
+    xd(3,3,:)=sc*C3*AAA*sin(omega*(currenttime+tspan)-acos(1/3));
     
-    xd(1,4,:)=sc*CCC*2*AAA*cos(omega*(currenttime+tspan)-acos(5/3));
-    xd(2,4,:)=sc*CCC*AAA*sqrt(3)*sin(omega*(currenttime+tspan)+acos(1/3));
-    xd(3,4,:)=sc*CCC*AAA*sin(omega*(currenttime+tspan));   
+    xd(1,4,:)=sc*C3*2*AAA*cos(omega*(currenttime+tspan)-acos(5/3));
+    xd(2,4,:)=sc*C3*AAA*sqrt(3)*sin(omega*(currenttime+tspan)+acos(1/3));
+    xd(3,4,:)=sc*C3*AAA*sin(omega*(currenttime+tspan));   
   end
   for i=1:ns
     %% solve ODE      
     [t,x]=ode23(@(t,x) hcwequation(t,x,IR,P,A,B,xd(:,i,:),currenttime,tspan),tspan,ssttemp(:,i,size(ssttemp,3)),opts);
     ssttemp(:,i,:)=x';  %% columns: statevector, rows: (x,y,z,u,v,w), depth: timeevolution 
     %% get data out of ODE
-    [a1,anglestemp(:,i,:)]=hcwequation(t,x',IR,P,A,B,xd(:,i,:),currenttime,tspan);
+    [a1,anglestemp(:,i,:),u]=hcwequation(t,x',IR,P,A,B,xd(:,i,:),currenttime,tspan);
     clear hcwequation
+    %input('abc')
   end
   %% append data of last control loop to global data vector
   sst=cat(3,sst,ssttemp(:,:,2:end));  
@@ -120,65 +123,72 @@ while currenttime<totaltime
 end
 toc
 
-
-figure
-   subplot(3,1,1)%% pitch
-     for i=1:ns
-       plot(squeeze(ttime),squeeze(angles(1,i,:)))
-       hold on
-    end
-    subplot(3,1,2)%%yaw
-    for i=1:ns
-       plot(squeeze(ttime),squeeze(angles(2,i,:)))
-       hold on
-    end
-    subplot(3,1,3)%%roll
-    for i=1:ns
-       plot(squeeze(ttime),squeeze(angles(3,i,:)))
-       hold on
-    end
-%%  plotting the results
-%{
-anglesX=zeros(3,ns,size(ttime,1));
-for i=1:ns
-  for j=1:2 %% two rotations
-    for k=1:size(ttime,1)
-      anglesX(j,i,k)=89*cos(2*pi/60/30*ttime(k)+i*pi/3+j*3/5*pi); %heading
-      anglesX(j,i,k)=89*sin(2*pi/60/30*ttime(k)+i*pi/3+j*3/5*pi); %tilt %roll would be the third component, not specified here
-    end
-  end
-end
-%}
-
-figure
-    for i=1:ns
-      plot3(squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'-')
-      hold on
-      names(i)=[{strcat('sat',int2str(i))}];
-    end
-    xlabel('X [m]');ylabel('Y [m]');zlabel('Z [m]');legend(names);grid on;hold off
-    if 0
-      axis(sc*[-35e3 35e3 -35e3 35e3 -35e3 35e3])
-      xticks(sc*[-20e3 0 20e3])
-      yticks(sc*[-20e3 0 20e3])
-      zticks(sc*[-20e3 0 20e3])
-      set(gcf,'PaperUnits', 'inches','PaperPosition', [0 0 2 2]) ;
-      fprintf('2by2','-dpng','-r0')
-    end
-    
 %% map on globe and create kml file
 visualization(ns,ttime,squeeze(sst(1,:,:)),squeeze(sst(2,:,:)),squeeze(sst(3,:,:)),altitude,angles, modelfilename,radiusOfEarth,mu)
 
+plotting(angles,sst,ttime,ns)
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [dxdt,anglestemp] =hcwequation(t,x,IR,P,A,B,xdi,currenttime,timespan)
+function plotting(angles,sst,ttime,ns)
+    figure
+       subplot(2,3,1)%% pitch
+         for i=1:ns
+           plot(squeeze(ttime/3600),squeeze(angles(1,i,:)))
+           hold on
+        end
+        subplot(2,3,2)%%yaw
+        for i=1:ns
+           plot(squeeze(ttime/3600),squeeze(angles(2,i,:)))
+           hold on
+        end
+        subplot(2,3,3)%%roll
+        for i=1:ns
+           plot(squeeze(ttime/3600),squeeze(angles(3,i,:)))
+           hold on
+        end
+        subplot(2,3,4)%%x
+        for i=1:ns
+           plot(squeeze(ttime/3600),squeeze(sst(1,i,:)))
+           hold on
+        end
+        subplot(2,3,5)%%y
+        for i=1:ns
+           plot(squeeze(ttime/3600),squeeze(sst(2,i,:)))
+           hold on
+        end
+        subplot(2,3,6)%%z
+        for i=1:ns
+           plot(squeeze(ttime/3600),squeeze(sst(3,i,:)))
+           hold on
+        end
+        
+    figure
+        for i=1:ns
+          plot3(squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'-')
+          hold on
+          names(i)=[{strcat('sat',int2str(i))}];
+        end
+        xlabel('X [m]');ylabel('Y [m]');zlabel('Z [m]');legend(names);grid on;hold off
+        if 0
+          axis(sc*[-35e3 35e3 -35e3 35e3 -35e3 35e3])
+          xticks(sc*[-20e3 0 20e3]);yticks(sc*[-20e3 0 20e3]);zticks(sc*[-20e3 0 20e3]);
+          set(gcf,'PaperUnits', 'inches','PaperPosition', [0 0 2 2]) ;
+          fprintf('2by2','-dpng','-r0')
+        end
+end    
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+function [dxdt,anglestemp,u]=hcwequation(t,x,IR,P,A,B,xdi,currenttime,timespan)
 %% HCW equation
   persistent ang;
   persistent timearray;
-  %timearray=0;
-  %% convergence relaxation factors
+
   satmass=2; %% kg
   density=1e-8; %%kg/m3
   v=7500; %% m/s
@@ -192,38 +202,50 @@ function [dxdt,anglestemp] =hcwequation(t,x,IR,P,A,B,xdi,currenttime,timespan)
   e=x-xdi2;
   %% control vector
   u1=-IR*B'*P*e;
-  %e(1,:)
-  %u1(1,:)
   
-  umax=k*1.2/satmass;
+  umax=-k*1.2/satmass;
   uyzmax=k*0.24/satmass;
   u=u1;%-[umax/2 0 0]'; %% to set u to a default value and size u correctly
-
-  for i=1:size(u1,2)      
-    if u1(1,i)>=1/2*umax
+  draggedon=ones(size(u1,2),1);
+  %u1
+  %u
+  %umax
+  %uyzmax
+  %input('a')
+  %{
+  for i=1:size(u,2)
+    if u(1,i)>=1/2*umax; %% going forward with drag
       u(1,i)=1/2*umax;
       u(2,i)=0;
-      u(3,i)=0;
-    elseif u1(1,i)<=-1/2*umax
+      u(3,i)=1/2*umax*100;
+    elseif u(1,i)<=-1/2*umax %% going backward 
       u(1,i)=-1/2*umax;
       u(2,i)=0;
       u(3,i)=0;
-      %elseif sqrt(u(2,i)^2+u(3,i)^2)>uyzmax
+    %elseif sqrt(u(2,i)^2+u(3,i)^2)>uyzmax
       %  u(1,i)=-0.8;
       %  u(2,i)=u1(2,i)/uyzmax;
       %  u(3,i)=u1(3,i)/uyzmax;
+    else 
+      print('error')
     end
-  end 
-  %anglestempX(1,:)=asind(1/1.2*u(1,:)/k)+asind(1/1.2*umax/k);
+  end
+%}  
+%anglestempX(1,:)=asind(1/1.2*u(1,:)/k)+asind(1/1.2*umax/k);
   %anglestempX(2,:)=0;
   %anglestempX(3,:)=0;
-  anglestemptemp(1,:)=atand(u(3,:)./u(1,:));
-  anglestemptemp(2,:)=atand(u(2,:)./u(1,:));
-  anglestemptemp(3,:)=atand(u(3,:)./u(2,:));
-  
+  for i=1:size(u,2)
+      if u(1,i)<0
+        %u(1,i)=-u(1,i);
+        %draggedon(i)=-1;
+        %disp('a');
+      end
+      anglestemptemp(1,i) = asind( draggedon(i)*u(3,i)./sqrt( u(1,i)^2 + u(3,i)^2));%pitch
+      anglestemptemp(2,i) = asind(              u(2,i)./sqrt( u(1,i)^2 + u(2,i)^2));%yaw
+      anglestemptemp(3,i) = asind( draggedon(i)*u(3,i)./sqrt( u(2,i)^2 + u(3,i)^2));%roll
+  end
   if size(ang,1)>2 && size(x,2)==1
     ang=[ang  anglestemptemp];
-    %  timearray=[timearray t];
   else
     ang=anglestemptemp;
   end
@@ -274,7 +296,7 @@ function visualization(ns,ttime,sstx,ssty,sstz,altitude,angles,modelfilename,rad
   seconds = floor(T-hours*3600-minutes*60);  % seconds of the orbital period
   t0   = 0;                                        % initial time          [s]
   tf=ttime(end);
-  step=60;%step = input(' Time step.        [s] step = ');  % time step             [s]    
+  step=1;%step = input(' Time step.        [s] step = ');  % time step             [s]    
   t    = t0:step:tf;                          % vector of time        [s]
   %% DETERMINATION OF THE DYNAMICS
   cosE0 = (e+cos(v0))./(1+e.*cos(v0));               % cosine of initial eccentric anomaly
@@ -334,73 +356,71 @@ function visualization(ns,ttime,sstx,ssty,sstz,altitude,angles,modelfilename,rad
     sstyvgrid(j,:)=interp1(ttime,ssty(j,:),t);
     sstzvgrid(j,:)=interp1(ttime,sstz(j,:),t);
   end
-    for j=1:size(ttime,1)
-      for i=1:ns
-        MAXY=sqrt(max(sstxvgrid(i,j)^2+sstyvgrid(i,j)^2));
-      end
-      footprintsize(j)=round(  MAXY/10^floor(log10(MAXY)) )  *  1e5;
-    end
-    %% centerpoint
-    Lat(1,:)     =  asin(sin(inclination).*sin(theta))/pi*180;              % Latitude             [deg]
-    Long(1,:)    = (atan2(ys./rs,xs./rs)-rot_earth')/pi*180;    % Longitude            [deg]
-    rs2(1,:)         = rs;                                        % radius                [km]
-    %% satellites
+  for i=1:size(t,2)
     for j=1:ns
-      ii(j,:)      = asin(  sstxvgrid(j,:)/1000  ./  (rs(:,1)'  + sstzvgrid(j,:)/1000) ); %%latitude offset
-      ll(j,:)      = asin( sstyvgrid(j,:)/1000   ./   (rs(:,1)' + sstzvgrid(j,:)/1000) ); %%longitude offset
+      MAXY=sqrt(max(sstxvgrid(j,i)^2+sstyvgrid(j,i)^2));
     end
-    for j=2:ns+1 
-      Lat(j,:)     = Lat(1,:)+ii(j-1,:)/pi*180;               % Latitude             [deg]
-      Long(j,:)    = Long(1,:)+ll(j-1,:)/pi*180;    % Longitude            [deg]
-      rs2(j,:)     = rs(:)'+sstzvgrid(j-1,:)/1000;                                    % radius                [km]
-    end
-    %figure
-    %subplot(3,1,1)
-    %for j=1:ns
-    %  plot(t,sstxvgrid(j,:))
-    %  hold on
-    %end  
-    %subplot(3,1,2)
-    %for j=1:ns
-    %  plot(t,sstyvgrid(j,:))
-    %  hold on
-    %end
-    %subplot(3,1,3)
-    %for j=1:ns
-    %  plot(t,sstzvgrid(j,:))
-    %  hold on
-    %end
-    %figure
-    %subplot(2,1,1)
-    %for j=1:ns
-    %  plot(t,ii(j,:))
-    %  hold on
-    %end
-    %subplot(2,1,2)
-    %for j=1:ns
-    %  plot(t,ll(j,:))
-    %  hold on
-    %end
-    %figure
-    %subplot(3,1,1)
-    %for j=1:ns+1
-    %  plot(t,Lat(j,:))
-    %  hold on
-    %end
-    %subplot(3,1,2)
-    %for j=1:ns+1
-    %  plot(t,Long(j,:))
-    %  hold on
-    %end
-    %subplot(3,1,3)
-    %for j=1:ns+1
-    %  plot(t,rs2(j,:))
-    %  hold on
-    %end
-
-    %% write KML file
-    writeKML(Lat,Long,rs2,t,ns,angles,modelfilename,footprintsize)
-    %writeKML(Lat,Long,rs2,t,ns,angles,modelfilename)
+    footprintsize(i)=round(  MAXY/10^floor(log10(MAXY)) )  *  1e5;
+  end
+  %% centerpoint
+  Lat(1,:)     =  asin(sin(inclination).*sin(theta))/pi*180;              % Latitude             [deg]
+  Long(1,:)    = (atan2(ys./rs,xs./rs)-rot_earth')/pi*180;    % Longitude            [deg]
+  rs2(1,:)         = rs;                                        % radius                [km]
+  %% satellites
+  for j=1:ns
+    ii(j,:)      = asin(  sstxvgrid(j,:)/1000  ./  (rs(:,1)'  + sstzvgrid(j,:)/1000) ); %%latitude offset
+    ll(j,:)      = asin( sstyvgrid(j,:)/1000   ./   (rs(:,1)' + sstzvgrid(j,:)/1000) ); %%longitude offset
+  end
+  for j=2:ns+1 
+    Lat(j,:)     = Lat(1,:)+ii(j-1,:)/pi*180;               % Latitude             [deg]
+    Long(j,:)    = Long(1,:)+ll(j-1,:)/pi*180;    % Longitude            [deg]
+    rs2(j,:)     = rs(:)'+sstzvgrid(j-1,:)/1000;                                    % radius                [km]
+  end
+  %figure
+  %subplot(3,1,1)
+  %for j=1:ns
+  %  plot(t,sstxvgrid(j,:))
+  %  hold on
+  %end  
+  %subplot(3,1,2)
+  %for j=1:ns
+  %  plot(t,sstyvgrid(j,:))
+  %  hold on
+  %end
+  %subplot(3,1,3)
+  %for j=1:ns
+  %  plot(t,sstzvgrid(j,:))
+  %  hold on
+  %end
+  %figure
+  %subplot(2,1,1)
+  %for j=1:ns
+  %  plot(t,ii(j,:))
+  %  hold on
+  %end
+  %subplot(2,1,2)
+  %for j=1:ns
+  %  plot(t,ll(j,:))
+  %  hold on
+  %end
+  %figure
+  %subplot(3,1,1)
+  %for j=1:ns+1
+  %  plot(t,Lat(j,:))
+  %  hold on
+  %end
+  %subplot(3,1,2)
+  %for j=1:ns+1
+  %  plot(t,Long(j,:))
+  %  hold on
+  %end
+  %subplot(3,1,3)
+  %for j=1:ns+1
+  %  plot(t,rs2(j,:))
+  %  hold on
+  %end
+  %% write KML file
+  writeKML(Lat,Long,rs2,t,ns,angles,modelfilename,footprintsize)
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -419,7 +439,7 @@ function writeKML(Lat,Long,rs,t,ns,angles,modelfilename,footprintsize)
   latviewoffset=1;
   longviewoffset=-1;
   tiltview=25;
-  altitudeview=600000;
+  altitudeview=600000;%600000;
   headingviewoffset=30;
   modelscalex=1500;
   modelscaley=1500;
@@ -428,8 +448,9 @@ function writeKML(Lat,Long,rs,t,ns,angles,modelfilename,footprintsize)
   tourjumpduration=zeros(1,size(t,2));
   tourjumpduration(2:end)=(t(2:end)-t(1:end-1))/accelerationfactor;
   filename='cosmos.kml';
-  USpoints=5;
-  for ii=1:3
+  USpoints=3;
+  %{  
+  for iiii=1:1
     counter=0;
     counter2=0;
     %% add pole points
@@ -440,10 +461,10 @@ function writeKML(Lat,Long,rs,t,ns,angles,modelfilename,footprintsize)
         counter2=0;
       end
       if Lat(1,i)==max([Lat(1,i-1) Lat(1,i) Lat(1,i+1)]) %% around northpole
-        for j=1:ns
-          if abs(Long(j,i))-abs(Long(j,i-1))<abs(Long(j,i))-abs(Long(j,i+1)) %% before northpole
-            fprintf('beforenp')
-          elseif abs(Long(j,i))-abs(Long(j,i-1))>abs(Long(j,i))-abs(Long(j,i+1)) && counter==0%% after northpole
+        %for j=1:ns+1
+          %if abs(Long(j,i))-abs(Long(j,i-1))<abs(Long(j,i))-abs(Long(j,i+1)) %% before northpole
+          %  fprintf('beforenp')
+          %elseif abs(Long(j,i))-abs(Long(j,i-1))>abs(Long(j,i))-abs(Long(j,i+1)) && counter==0%% after northpole
             %printf('\nafternp\n')
             counter=counter+1;
             %% add line to Lat,Long,t, tourjumpduration
@@ -454,23 +475,65 @@ function writeKML(Lat,Long,rs,t,ns,angles,modelfilename,footprintsize)
             tourjumpduration(i+1:end+1)=tourjumpduration(i:end);
             angles(:,:,i+1:end+1)=angles(:,:,i:end);
             footprintsize(i+1:end+1)=footprintsize(i:end);
+            %% assign data to new line
             Lat(:,i)=(Lat(:,i-1)+Lat(:,i+1))/2; %!interpolate
-            for k=1:ns                      
-              idx=find(min(   [abs(Lat(k,i-1)) abs(Lat(k,i+1))]   )==Lat(k,:));
-              Long(k,i)=(  Long(k,i-1)+Long(k,i+1)+sign(Long(k,idx))*180  )/2;
+            for k=1:ns+1                      
+              %idx=find(min(   [abs(Lat(k,i-1)) abs(Lat(k,i+1))]   )==Lat(k,:));
+              %Long(k,i)=(  Long(k,i-1)+Long(k,i+1)+sign(Long(k,idx))*180  )/2;
+              if (sign(Long(k,i-1))~=sign(Long(k,i+1)) )&& ( abs(Long(k,i-1)) + abs(Long(k,i+1)) > 100 )
+                Long(k,i)=(  Long(k,i-1) + Long(k,i+1) - 2*sign(max([abs(Long(k,i-1)) abs(Long(k,i+1)) ])) * max([abs(Long(k,i-1)) abs(Long(k,i+1)) ])  )/2;
+                  Long(k,i)
+                  Long(k,i-1)
+                  Long(k,i+1)
+                
+              else
+                  Long(k,i)=(  Long(k,i-1) + Long(k,i+1))/2;
+              end
+    
             end
             t(i)=(t(i)+t(i-1))/2;
+            milliseconds=round(1000*(initialtime*24*60*60+t(i)-floor(initialtime*24*60*60+t(i))));
+            strcat(datestr(initialtime+t(i)/24/60/60,29),'T',datestr(initialtime+t(i)/24/60/60,13),'.',num2str(milliseconds),'Z')
+            iiii
+            input('aa')            
             tourjumpduration(i)=tourjumpduration(i)/2;
             tourjumpduration(i+1)=tourjumpduration(i);
             angles(:,:,i)=(angles(:,:,i-1)+angles(:,:,i+1))/2;
             footprintsize(i)=(footprintsize(i-1)+footprintsize(i+1))/2;
-          end
-        end
+            %{
+            %% x add further line to Lat,Long,t, tourjumpduration
+            Lat(:,i+3:end+1)=Lat(:,i+2:end);
+            Long(:,i+3:end+1)=Long(:,i+2:end);
+            rs(:,i+3:end+1)=rs(:,i+2:end);
+            t(i+3:end+1)=t(i+2:end);
+            tourjumpduration(i+3:end+1)=tourjumpduration(i+2:end);
+            angles(:,:,i+3:end+1)=angles(:,:,i+2:end);
+            footprintsize(i+3:end+1)=footprintsize(i+2:end);
+            %% x assign data to new further line
+            Lat(:,i+2)=(Lat(:,i+1)+Lat(:,i+3))/2; %!interpolate
+            for k=1:ns+1                      
+              %idx=find(min(   [abs(Lat(k,i+1)) abs(Lat(k,i+3))]   )==Lat(k,:));
+              %Long(k,i+2)=(  Long(k,i+1)+Long(k,i+3)+sign(Long(k,idx))*180  )/2;
+              if (sign(Long(k,i+1))~=sign(Long(k,i+3)) )&& ( abs(Long(k,i+1)) + abs(Long(k,i+3)) > 100 )
+                Long(k,i)=(  Long(k,i+1) + Long(k,i+3) - 2*sign(max([abs(Long(k,i+1)) abs(Long(k,i+3)) ])) * max([abs(Long(k,i+1)) abs(Long(k,i+3)) ])  )/2;
+              else
+                Long(k,i)=(  Long(k,i+1) + Long(k,i+3))/2;
+              end
+            end
+            t(i+2)=(t(i+2)+t(i+1))/2;
+            tourjumpduration(i+2)=tourjumpduration(i+2)/2;
+            tourjumpduration(i+3)=tourjumpduration(i+2);
+            angles(:,:,i+2)=(angles(:,:,i+1)+angles(:,:,i+3))/2;
+            footprintsize(i+2)=(footprintsize(i+1)+footprintsize(i+3))/2;
+            %}
+          %end
+        %end
       elseif Lat(1,i)==min([Lat(1,i-1) Lat(1,i) Lat(1,i+1)]) %% around southpole
         fprintf('do something for the southpole point adding')
       end
     end
   end
+  %}
   for i=1:size(t,2) %% shift longitude from 0-360 deg to +/- 180
     for j=1:ns
       if Long(j,i)<-180
@@ -488,9 +551,9 @@ function writeKML(Lat,Long,rs,t,ns,angles,modelfilename,footprintsize)
   
   id=fopen(filename,'w'); %% write kml file
   fprintf(id,'<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">');
-  fprintf(id,'\n  <Folder> ');
-  fprintf(id,'\n  <Style id="stylesel_0"><IconStyle><Icon><href/></Icon></IconStyle><LabelStyle><scale>0.3</scale></LabelStyle></Style>');
-  fprintf(id,'\n  <Style id="circle"><IconStyle><Icon><href/>figures%scircle.png</Icon></IconStyle><LabelStyle><scale>0.3</scale></LabelStyle></Style>',filesep);
+  fprintf(id,'\n<Folder> ');
+  fprintf(id,'\n  <Style id="stylesel_0"><IconStyle><Icon><href></href></Icon></IconStyle><LabelStyle><scale>0.3</scale></LabelStyle></Style>');
+  fprintf(id,'\n  <Style id="circle"><IconStyle><Icon><href>figures%scircle.png</href></Icon></IconStyle><LabelStyle><scale>0.3</scale></LabelStyle></Style>',filesep);
 
   %% initial camera viewpoint
 %  fprintf(id,'\n<Camera>');
@@ -502,11 +565,9 @@ function writeKML(Lat,Long,rs,t,ns,angles,modelfilename,footprintsize)
 %  fprintf(id,'\n</Camera>');
 
   fprintf(id,'\n<Camera>');
-  fprintf(id,'\n  <gx:TimeSpan>');
-  fprintf(id,'\n		<begin>%s</begin><end>%s</end>',strcat(datestr(initialtime+UStime(1)/24/60/60-1/24/60/60,29),'T',datestr(initialtime+UStime(1)/24/60/60-1/24/60/60,13),'Z'),strcat(datestr(initialtime+UStime(1)/24/60/60+1/24/60/60,29),'T',datestr(initialtime+UStime(1)/24/60/60+1/24/60/60,13),'Z'));
-  fprintf(id,'\n  </gx:TimeSpan>');
-  fprintf(id,'\n  <longitude>%f</longitude><latitude>%f</latitude><altitude>%f</altitude>',USLong(1)+longviewoffset*(90-abs(USLat(1) ))/90,USLat(1)-latviewoffset,altitudeview);
-  fprintf(id,'\n  <heading>%f</heading><tilt>%f</tilt><roll>0</roll>',headingviewoffset*(90-abs(USLat(1) ))/90,tiltview);
+  fprintf(id,'\n   <gx:TimeSpan><begin>%s</begin><end>%s</end></gx:TimeSpan>',strcat(datestr(initialtime+UStime(1)/24/60/60-1/24/60/60,29),'T',datestr(initialtime+UStime(1)/24/60/60-1/24/60/60,13),'Z'),strcat(datestr(initialtime+UStime(1)/24/60/60+1/24/60/60,29),'T',datestr(initialtime+UStime(1)/24/60/60+1/24/60/60,13),'Z'));
+  fprintf(id,'\n   <longitude>%f</longitude><latitude>%f</latitude><altitude>%f</altitude>',USLong(1)+longviewoffset*(90-abs(USLat(1) ))/90,USLat(1)-latviewoffset,altitudeview);
+  fprintf(id,'\n   <heading>%f</heading><tilt>%f</tilt><roll>0</roll>',headingviewoffset*(90-abs(USLat(1) ))/90,tiltview);
   fprintf(id,'\n</Camera>');
 
   %% tour definition
@@ -516,12 +577,10 @@ function writeKML(Lat,Long,rs,t,ns,angles,modelfilename,footprintsize)
     if i<USpoints
       fprintf(id,'\n<gx:FlyTo><gx:flyToMode>smooth</gx:flyToMode><gx:duration>%f</gx:duration><Camera>',USjumpduration);
       pointintime=strcat(datestr(initialtime+UStime(i+USpoints)/24/60/60,29),'T',datestr(initialtime+UStime(i+USpoints)/24/60/60,13),'Z');
-      pointintimeb=strcat(datestr(initialtime+UStime(i+USpoints)/24/60/60-10/24/60/60,29),'T',datestr(initialtime+UStime(i+USpoints)/24/60/60-10/24/60/60,13),'Z');
-      pointintimee=strcat(datestr(initialtime+UStime(i+USpoints)/24/60/60+10/24/60/60,29),'T',datestr(initialtime+UStime(i+USpoints)/24/60/60+10/24/60/60,13),'Z');
+      pointintimeb=strcat(datestr(initialtime+UStime(i+USpoints)/24/60/60-0.2/24/60/60,29),'T',datestr(initialtime+UStime(i+USpoints)/24/60/60-0.2/24/60/60,13),'Z');
+      pointintimee=strcat(datestr(initialtime+UStime(i+USpoints)/24/60/60+0.2/24/60/60,29),'T',datestr(initialtime+UStime(i+USpoints)/24/60/60+0.2/24/60/60,13),'Z');
       %fprintf(id,'\n		    <gx:TimeStamp><when> %s </when></gx:TimeStamp>',pointintime');
-      fprintf(id,'\n  <gx:TimeSpan>');
-      fprintf(id,'\n		<begin>%s</begin><end>%s</end>',pointintimeb,pointintimee);
-      fprintf(id,'\n  </gx:TimeSpan>');
+      fprintf(id,'\n  <gx:TimeSpan><begin>%s</begin><end>%s</end></gx:TimeSpan>',pointintimeb,pointintimee);
       %% set viewpoint and heading to according to flight direction
       if i==-USpoints+1  %% first point
         fprintf(id,'\n  <longitude>%f</longitude><latitude>%f</latitude><altitude>%f</altitude>',USLong(i+USpoints)+longviewoffset*(90-abs(Lat(1,1) ))/90,USLat(i+USpoints)-latviewoffset,altitudeview);
@@ -542,23 +601,22 @@ function writeKML(Lat,Long,rs,t,ns,angles,modelfilename,footprintsize)
       ;
   else
     fprintf(id,'\n<gx:FlyTo><gx:flyToMode>smooth</gx:flyToMode><gx:duration>%f</gx:duration><Camera>',tourjumpduration(i));
-    pointintime=strcat(datestr(initialtime+t(i)/24/60/60,29),'T',datestr(initialtime+t(i)/24/60/60,13),'Z');
-    pointintimeb=strcat(datestr(initialtime+t(i)/24/60/60-10/24/60/60,29),'T',datestr(initialtime+t(i)/24/60/60-10/24/60/60,13),'Z');
-    pointintimee=strcat(datestr(initialtime+t(i)/24/60/60+10/24/60/60,29),'T',datestr(initialtime+t(i)/24/60/60+10/24/60/60,13),'Z');
+    milliseconds=round(1000*(initialtime*24*60*60+t(i)-floor(initialtime*24*60*60+t(i))));
+    pointintime=strcat(datestr(initialtime+t(i)/24/60/60,29),'T',datestr(initialtime+t(i)/24/60/60,13),'.',num2str(milliseconds),'Z');
+    pointintimeb=strcat(datestr(initialtime+t(i)/24/60/60-0.2/24/60/60,29),'T',datestr(initialtime+t(i)/24/60/60-0.2/24/60/60,13),'.',num2str(milliseconds),'Z');
+    pointintimee=strcat(datestr(initialtime+t(i)/24/60/60+0.2/24/60/60,29),'T',datestr(initialtime+t(i)/24/60/60+0.2/24/60/60,13),'.',num2str(milliseconds),'Z');
     %fprintf(id,'\n		    <gx:TimeStamp><when> %s </when></gx:TimeStamp>',pointintime');
-    fprintf(id,'\n  <gx:TimeSpan>');
-    fprintf(id,'\n		<begin>%s</begin><end>%s</end>',pointintimeb,pointintimee);
-    fprintf(id,'\n  </gx:TimeSpan>');
+    fprintf(id,'\n  <gx:TimeSpan><begin>%s</begin><end>%s</end></gx:TimeSpan>',pointintimeb,pointintimee);
     %% set viewpoint and heading to according to flight direction
     if i==1  %% first point
       fprintf(id,'\n  <longitude>%f</longitude><latitude>%f</latitude><altitude>%f</altitude>',Long(1,i)+longviewoffset*(90-abs(Lat(1,i) ))/90,Lat(1,i)-latviewoffset,altitudeview);
       fprintf(id,'\n  <heading>%f</heading><tilt>%f</tilt><roll>0</roll>',headingviewoffset*(90-abs(Lat(1,i) ))/90,tiltview);
     elseif Lat(1,i)==max([Lat(1,i-1) Lat(1,i) Lat(1,i+1)]) %% on northpole
-      if abs( abs(Long(j,i)) - abs(Long(j,i-1)) )<abs( abs(Long(j,i)) - abs(Long(j,i+1)) ) %% before northpole, i.e. norther direction
+      if abs( abs(Long(j,i)) - abs(Long(j,i-1)) )<abs( abs(Long(j,i)) - abs(Long(j,i+1)) ) %% before northpole, i.e. northern direction
         fprintf('bnp%d',i)
         fprintf(id,'\n  <longitude>%f</longitude><latitude>%f</latitude><altitude>%f</altitude>',Long(1,i)+longviewoffset*(90-abs(Lat(1,i) ))/90,Lat(1,i)-latviewoffset,altitudeview);
         fprintf(id,'\n  <heading>%f</heading><tilt>%f</tilt><roll>0</roll>',headingviewoffset*(90-abs(Lat(1,i) ))/90,tiltview);            
-      elseif abs( abs(Long(j,i)) - abs(Long(j,i-1)) )>abs( abs(Long(j,i)) - abs(Long(j,i+1)) ) %% after northpole, i.e. souther direction
+      elseif abs( abs(Long(j,i)) - abs(Long(j,i-1)) )>abs( abs(Long(j,i)) - abs(Long(j,i+1)) ) %% after northpole, i.e. southern direction
         fprintf('anp%d',i)
         fprintf(id,'\n  <longitude>%f</longitude><latitude>%f</latitude><altitude>%f</altitude>',Long(1,i)-longviewoffset*(90-abs(Lat(1,i) ))/90,Lat(1,i)+latviewoffset,altitudeview);
         fprintf(id,'\n  <heading>%f</heading><tilt>%f</tilt><roll>0</roll>',180+headingviewoffset*(90-abs(Lat(1,i) ))/90,tiltview);        
@@ -616,17 +674,18 @@ function writeKML(Lat,Long,rs,t,ns,angles,modelfilename,footprintsize)
     fprintf(id,'\n      <Orientation><heading>90.0</heading><tilt>0</tilt><roll>0</roll></Orientation>');
     fprintf(id,'\n      <Scale><x>%f</x><y>%f</y><z>%f</z></Scale>',modelscalex,modelscaley,modelscalez);
     fprintf(id,'\n      <Link id="link_0"><href>%s</href></Link>',modelfilename);
-    fprintf(id,'\n    </Model>');
+    fprintf(id,'\n   </Model>');
 
     for i=1:size(t,2)
-      fprintf(id,'\n<gx:coord> %f %f %f</gx:coord>',Long(j,i),Lat(j,i),(rs(j,i)-6371)*1000); 
+      fprintf(id,'\n  <gx:coord> %f %f %f</gx:coord>',Long(j,i),Lat(j,i),(rs(j,i)-6371)*1000); 
     end 
     for i=1:size(t,2)
-      pointintime=strcat(datestr(initialtime,29),'T',datestr(initialtime+t(i)/24/60/60,13),'Z');
-      fprintf(id,'\n<when> %s </when>',pointintime);
+      milliseconds=round(1000*(initialtime*24*60*60+t(i)-floor(initialtime*24*60*60+t(i))));
+      pointintime=strcat(datestr(initialtime,29),'T',datestr(initialtime+t(i)/24/60/60,13),'.',num2str(milliseconds),'Z');
+      fprintf(id,'\n  <when> %s </when>',pointintime);
     end
     for i=1:size(t,2)
-      fprintf(id,'\n<gx:angles>%f %f %f</gx:angles>',angles(2,j-1,i),angles(1,j-1,i),angles(3,j-1,i));%% yaw,pitch, roll %% yaw is always 0
+      fprintf(id,'\n  <gx:angles>%f %f %f</gx:angles>',angles(2,j-1,i),angles(1,j-1,i),angles(3,j-1,i));%% yaw,pitch, roll 
     end 
     fprintf(id,'\n  </gx:Track></Placemark>');
    end
@@ -636,14 +695,15 @@ function writeKML(Lat,Long,rs,t,ns,angles,modelfilename,footprintsize)
      fprintf(id,'\n   <Model id="geom_1"><altitudeMode>clampToGround</altitudeMode>');
      fprintf(id,'\n       <Orientation><heading>90.0</heading><tilt>0</tilt><roll>0</roll></Orientation>');        
      fprintf(id,'\n       <Scale><x>%f</x><y>%f</y><z>%f</z></Scale>',footprintsize(k),footprintsize(k),footprintsize(k)); 
-     fprintf(id,'\n     <Location>');
-     fprintf(id,'\n       <longitude>%f</longitude> <!-- kml:angle180 -->',Long(1,k));
-     fprintf(id,'\n       <latitude>%f</latitude>   <!-- kml:angle90 -->',Lat(1,k));
+     fprintf(id,'\n       <Location>');
+     fprintf(id,'\n        <longitude>%f</longitude> <!-- kml:angle180 -->',Long(1,k));
+     fprintf(id,'\n        <latitude>%f</latitude>   <!-- kml:angle90 -->',Lat(1,k));
      %fprintf(id,'\n       <altitude>%f</altitude>  <!-- double -->',100);
-     fprintf(id,'\n     </Location>');
+     fprintf(id,'\n       </Location>');
      fprintf(id,'\n       <Link id="link_1"><href>figures%storus.dae</href></Link>',filesep);
      fprintf(id,'\n    </Model>');
-     pointintime=strcat(datestr(initialtime,29),'T',datestr(initialtime+t(k)/24/60/60,13),'Z');
+     milliseconds=round(1000*(initialtime*24*60*60+t(i)-floor(initialtime*24*60*60+t(i))));
+     pointintime=strcat(datestr(initialtime,29),'T',datestr(initialtime+t(k)/24/60/60,13),'.',num2str(milliseconds),'Z');
      fprintf(id,'\n     <TimeStamp><when> %s </when></TimeStamp>',pointintime);
      fprintf(id,'\n</Placemark>');  
      k=k+1;
