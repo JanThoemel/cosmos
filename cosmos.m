@@ -42,11 +42,15 @@ C3=100;               %% size of formation
 C4=1000;               %% deployment
 
 %% timespan to simulate
-totaltime=48*60*60;     %% in s
-startsecondphase=24*60*60;     %% in s
+totaltime=6*60*60;     %% in s
+startsecondphase=6*60*60;     %% in s
 currenttime=0;          %% now, should usually be 0
 ttime=[0];
-tspan=0:1:1800;        %% duration and interpolation timestep for each control loop. ODE45 chooses its one optimal timestep. 150s total duration is consistent with Ivanov
+comp_step=1;            %% computational step size
+tspan=0:comp_step:1800; %% duration and interpolation timestep for each control loop. ODE45 chooses its one optimal timestep. 150s total duration is consistent with Ivanov
+vis_step=2;             %% visualization step size
+accelerationfactor=60;
+fprintf('\n duration of movie %f min',totaltime/vis_step/accelerationfactor/60) %% length of animation in min: totaltime/vis_step/accelerationfactor/60
 %angles(ns,size(tspan,1));
 %size(angles)
 %% initial conditions of ODE
@@ -80,7 +84,8 @@ while currenttime<totaltime
   if currenttime<startsecondphase    %% initial desired vector
     %% desired statevector II
     xd(1,1,:)=-C3*DDD;
-    xd(2,2,:)=C3*AAA*sqrt(3)*sin(omega*(currenttime+tspan));
+    %xd(2,2,:)=C3*AAA*sqrt(3)*sin(omega*(currenttime+tspan));
+    xd(2,2,:)=C3*AAA*sqrt(3)*cos(omega*(currenttime+tspan));
     xd(1,3,:)=C3*DDD;
 
     %xd(1,3,:)=CCC*2*AAA*cos(omega*(currenttime+tspan)-acos(1/3));
@@ -106,11 +111,15 @@ while currenttime<totaltime
   end
   for i=1:ns
     %% solve ODE      
+    %input('0')
     [t,x]=ode23(@(t,x) hcwequation(t,x,IR,P,A,B,xd(:,i,:),currenttime,tspan),tspan,ssttemp(:,i,size(ssttemp,3)),opts);
     ssttemp(:,i,:)=x';  %% columns: statevector, rows: (x,y,z,u,v,w), depth: timeevolution 
+    %input('a')
+
     %% get data out of ODE
     [a1,anglestemp(:,i,:),u]=hcwequation(t,x',IR,P,A,B,xd(:,i,:),currenttime,tspan);
     clear hcwequation
+    %input('b');
     %input('abc')
   end
   %% append data of last control loop to global data vector
@@ -128,7 +137,7 @@ toc
 %angles(:,:,:)=0;
 
 %% map on globe and create kml file
-visualization(ns,ttime,squeeze(sst(1,:,:)),squeeze(sst(2,:,:)),squeeze(sst(3,:,:)),altitude,angles, modelfilename,radiusOfEarth,mu)
+visualization(ns,ttime,squeeze(sst(1,:,:)),squeeze(sst(2,:,:)),squeeze(sst(3,:,:)),altitude,angles, modelfilename,radiusOfEarth,mu,vis_step,accelerationfactor)
 
 plotting(angles,sst,ttime,ns)
 
@@ -151,7 +160,7 @@ function plotting(angles,sst,ttime,ns)
         for i=1:ns
            plot(squeeze(ttime/3600),squeeze(angles(2,i,:)));hold on
         end
-        ylabel('yaw angle [deg]');xlabel('time [s]');grid on;hold off
+        ylabel('yaw angle [deg]');xlabel('time [h]');grid on;hold off
         subplot(2,3,3)%%roll
         for i=1:ns
            plot(squeeze(ttime/3600),squeeze(angles(3,i,:)));hold on
@@ -213,12 +222,6 @@ function [dxdt,anglestemp,u]=hcwequation(t,x,IR,P,A,B,xdi,currenttime,timespan)
   umax=-k*1.2/satmass;
   uyzmax=k*0.24/satmass;
   u=u1;%-[umax/2 0 0]'; %% to set u to a default value and size u correctly
-  draggedon=ones(size(u1,2),1);
-  %u1
-  %u
-  %umax
-  %uyzmax
-  %input('a')
   %{
   for i=1:size(u,2)
     if u(1,i)>=1/2*umax; %% going forward with drag
@@ -244,19 +247,25 @@ function [dxdt,anglestemp,u]=hcwequation(t,x,IR,P,A,B,xdi,currenttime,timespan)
   for i=1:size(u,2)
       if u(1,i)<0
         u1temp=-u(1,i);
-        %draggedon(i)=-1;
-        %disp('a');
       else
           u1temp=u(1,i);
       end
       anglestemptemp(1,i) = asind( u(3,i)./sqrt( u(1,i)^2 + u(3,i)^2));%pitch
       anglestemptemp(2,i) = asind( u(2,i)./sqrt( u(1,i)^2 + u(2,i)^2));%yaw
       anglestemptemp(3,i) = asind( u(3,i)./sqrt( u(2,i)^2 + u(3,i)^2));%roll
+      %fprintf('\n u1temp %f umax %f',u1temp,umax);
   end
-  if size(ang,1)>2 && size(x,2)==1
+  if size(ang,1)>0 && size(x,2)==1 %% TBC: enter only when solving ODE but not first time
     ang=[ang  anglestemptemp];
-  else
+    %fprintf('\n 1');
+  elseif size(ang,1)==0 && size(x,2)==1%% TBC: enter only when solving ODE,first time
     ang=anglestemptemp;
+    %fprintf('\n 2');
+  elseif size(ang,1)>0 && size(x,2)>1%% TBC: enter when getting all angles  
+    ang=anglestemptemp;
+    %fprintf('\n 3');
+  %else
+  %    fprintf('\n getting the angles')
   end
   anglestemp=ang;
   dxdt=A*x+B*u;
@@ -266,7 +275,7 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function visualization(ns,ttime,sstx,ssty,sstz,altitude,angles,modelfilename,radiusOfEarth,mu)
+function visualization(ns,ttime,sstx,ssty,sstz,altitude,angles,modelfilename,radiusOfEarth,mu,vis_step,accelerationfactor)
   %% this function adds the global movement of the satellite based on Kepler's laws
   %this function works with km instead of m %!harmonize
   RE = radiusOfEarth/1000;          % Earth's radius                            [km]
@@ -306,8 +315,8 @@ function visualization(ns,ttime,sstx,ssty,sstz,altitude,angles,modelfilename,rad
   seconds = floor(T-hours*3600-minutes*60);  % seconds of the orbital period
   t0   = ttime(1);                           % initial time          [s]
   tf=ttime(end);                             % final time
-  step=1;       %step = input(' Time step.        [s] step = ');  % time step             [s]    
-  t    = t0:step:tf;                          % vector of time        [s] 
+  vis_step=2;       %step = input(' Time step.        [s] step = ');  % time step             [s]    
+  t    = t0:vis_step:tf;                          % vector of time        [s] 
   %% DETERMINATION OF THE DYNAMICS
   cosE0 = (e+cos(v0))./(1+e.*cos(v0));               % cosine of initial eccentric anomaly
   sinE0 = (sqrt(1-e^2).*sin(v0))./(1+e.*cos(v0));    %   sine of initial eccentric anomaly
@@ -365,6 +374,12 @@ function visualization(ns,ttime,sstx,ssty,sstz,altitude,angles,modelfilename,rad
     sstxvgrid(j,:)=interp1(ttime,sstx(j,:),t);
     sstyvgrid(j,:)=interp1(ttime,ssty(j,:),t);
     sstzvgrid(j,:)=interp1(ttime,sstz(j,:),t);
+    pitchvgrid(j,:)=interp1(ttime,squeeze(angles(1,j,:)),t);
+    yawvgrid(j,:)=interp1(ttime,squeeze(angles(2,j,:)),t);
+    rollvgrid(j,:)=interp1(ttime,squeeze(angles(3,j,:)),t);
+%angles=zeros(3,ns);
+%anglestemp=zeros(3,ns,size(tspan,2));
+  
   end
   for i=1:size(t,2)
     %for j=1:ns
@@ -379,66 +394,101 @@ function visualization(ns,ttime,sstx,ssty,sstz,altitude,angles,modelfilename,rad
   rs2(1,:)         = rs;                                        % radius                [km]
   %% satellites
   for j=1:ns
-    ii(j,:)      = asin(  sstxvgrid(j,:)/1000  ./  (rs(:,1)'  + sstzvgrid(j,:)/1000) ); %%latitude offset
-    ll(j,:)      = asin( sstyvgrid(j,:)/1000   ./   (rs(:,1)' + sstzvgrid(j,:)/1000) ); %%longitude offset
+    latoff(j,:)      = asin(  sstxvgrid(j,:)/1000  ./  (rs(:,1)'  + sstzvgrid(j,:)/1000) ); %%latitude offset
+    longoff(j,:)      = asin( sstyvgrid(j,:)/1000   ./   (rs(:,1)' + sstzvgrid(j,:)/1000) ); %%longitude offset
   end
-  for j=2:ns+1 
-    Lat(j,:)     = Lat(1,:)+ii(j-1,:)/pi*180;               % Latitude             [deg]
-    Long(j,:)    = Long(1,:)+ll(j-1,:)/pi*180;    % Longitude            [deg]
-    rs2(j,:)     = rs(:)'+sstzvgrid(j-1,:)/1000;                                    % radius                [km]
+  for i=1:size(t,2)-1
+      for j=2:ns+1
+        if i==1 %% 1-point, northward
+            Lat(j,i)     = Lat(1,i)+latoff(j-1,i)/pi*180;      % Latitude             [deg]
+            Long(j,i)    = Long(1,i)+longoff(j-1,i)/pi*180;    % Longitude            [deg]
+            rs2(j,i)     = rs(i)'+sstzvgrid(j-1,i)/1000;       % radius                [km]
+        elseif Lat(1,i+1)>Lat(1,i) %% northward
+            Lat(j,i)     = Lat(1,i)+latoff(j-1,i)/pi*180;      % Latitude             [deg]
+            Long(j,i)    = Long(1,i)+longoff(j-1,i)/pi*180;    % Longitude            [deg]
+            rs2(j,i)     = rs(i)'+sstzvgrid(j-1,i)/1000;       % radius                [km]
+        elseif Lat(1,i+1)<Lat(1,i) %% southward
+            Lat(j,i)     = Lat(1,i)-latoff(j-1,i)/pi*180;      % Latitude             [deg]
+            Long(j,i)    = Long(1,i)+longoff(j-1,i)/pi*180;    % Longitude            [deg]
+            rs2(j,i)     = rs(i)'+sstzvgrid(j-1,i)/1000;       % radius                [km]
+            yawvgrid(j-1,i)= yawvgrid(j-1,i)-180;
+        elseif i==size(t,2) %% last point
+            if Lat(1,i)>Lat(1,i-1) %% northward
+                Lat(j,i)     = Lat(1,i)+latoff(j-1,i)/pi*180;      % Latitude             [deg]
+                Long(j,i)    = Long(1,i)+longoff(j-1,i)/pi*180;    % Longitude            [deg]
+                rs2(j,i)     = rs(i)'+sstzvgrid(j-1,i)/1000;       % radius                [km]
+            elseif Lat(1,i)<Lat(1,i-1) %% southward
+                Lat(j,i)     = Lat(1,i)-latoff(j-1,i)/pi*180;      % Latitude             [deg]
+                Long(j,i)    = Long(1,i)-longoff(j-1,i)/pi*180;    % Longitude            [deg]
+                rs2(j,i)     = rs(i)'+sstzvgrid(j-1,i)/1000;       % radius                [km]
+            end
+        else
+            fprintf('error708422')
+        end
+      end
   end
-  %figure
-  %subplot(3,1,1)
-  %for j=1:ns
-  %  plot(t,sstxvgrid(j,:))
-  %  hold on
-  %end  
-  %subplot(3,1,2)
-  %for j=1:ns
-  %  plot(t,sstyvgrid(j,:))
-  %  hold on
-  %end
-  %subplot(3,1,3)
-  %for j=1:ns
-  %  plot(t,sstzvgrid(j,:))
-  %  hold on
-  %end
-  %figure
-  %subplot(2,1,1)
-  %for j=1:ns
-  %  plot(t,ii(j,:))
-  %  hold on
-  %end
-  %subplot(2,1,2)
-  %for j=1:ns
-  %  plot(t,ll(j,:))
-  %  hold on
-  %end
-  %figure
-  %subplot(3,1,1)
-  %for j=1:ns+1
-  %  plot(t,Lat(j,:))
-  %  hold on
-  %end
-  %subplot(3,1,2)
-  %for j=1:ns+1
-  %  plot(t,Long(j,:))
-  %  hold on
-  %end
-  %subplot(3,1,3)
-  %for j=1:ns+1
-  %  plot(t,rs2(j,:))
-  %  hold on
-  %end
+figure
+      subplot(3,1,1)
+      for j=1:ns
+        plot(t,sstxvgrid(j,:))
+        hold on
+      end
+      ylabel("x");
+      subplot(3,1,2)
+      for j=1:ns
+        plot(t,sstyvgrid(j,:))
+        hold on
+      end
+      ylabel("y");      
+      subplot(3,1,3)
+      for j=1:ns
+        plot(t,sstzvgrid(j,:))
+        hold on
+      end
+      ylabel("z");
+      
+%  figure
+%      subplot(2,1,1)
+%      for j=1:ns
+%        plot(t,ii(j,:))
+%        hold on
+%      end
+%      ylabel("-");
+%      subplot(2,1,2)
+%      for j=1:ns
+%        plot(t,ll(j,:))
+%        hold on
+%      end
+%      ylabel("-");
+   figure
+      subplot(3,1,1)
+      for j=1:ns+1
+        plot(t,Lat(j,:))
+        hold on
+      end
+      ylabel("Lat");
+      subplot(3,1,2)
+      for j=1:ns+1
+        plot(t,Long(j,:))
+        hold on
+      end
+      ylabel("Long");
+      subplot(3,1,3)
+      for j=1:ns+1
+        plot(t,rs2(j,:))
+        hold on
+      end
+      ylabel("rs2");
+      
   %% write KML file
-  writeKML(Lat,Long,rs2,t,ns,angles,modelfilename,footprintsize)
+  writeKML(Lat,Long,rs2,t,ns,pitchvgrid,yawvgrid,rollvgrid,modelfilename,footprintsize,accelerationfactor)
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function writeKML(Lat,Long,rs,t,ns,angles,modelfilename,footprintsize)
+function writeKML(Lat,Long,rs,t,ns,pitchvgrid,yawvgrid,rollvgrid,modelfilename,footprintsize,accelerationfactor)
 %function writeKML(Lat,Long,rs,t,ns,angles,modelfilename)
   
   %! simulation cannot be longer than a day
@@ -455,7 +505,7 @@ function writeKML(Lat,Long,rs,t,ns,angles,modelfilename,footprintsize)
   modelscalex=2000;
   modelscaley=2000;
   modelscalez=2000;
-  accelerationfactor=60;
+  
   tourjumpduration=zeros(1,size(t,2));
   tourjumpduration(2:end)=(t(2:end)-t(1:end-1))/accelerationfactor;
   filename='cosmos.kml';
@@ -557,7 +607,7 @@ function writeKML(Lat,Long,rs,t,ns,angles,modelfilename,footprintsize)
   USLat=[-flip(Lat(1,2:USpoints))'; Lat(1,1:USpoints)'];
   USrs=[flip(rs(1,2:USpoints))'; rs(1,1:USpoints)'];
   UStime=[-flip(t(2:USpoints)) t(1:USpoints)];
-  USjumpduration=2/accelerationfactor;
+  USjumpduration=(t(2)-t(1))/accelerationfactor*2;
   %a=input('a')
   
   id=fopen(filename,'w'); %% write kml file
@@ -597,9 +647,10 @@ function writeKML(Lat,Long,rs,t,ns,angles,modelfilename,footprintsize)
         fprintf(id,'\n  <longitude>%f</longitude><latitude>%f</latitude><altitude>%f</altitude>',USLong(i+USpoints)+longviewoffset*(90-abs(Lat(1,1) ))/90,USLat(i+USpoints)-latviewoffset,altitudeview);
         fprintf(id,'\n  <heading>%f</heading><tilt>%f</tilt><roll>0</roll>',headingviewoffset*(90-abs(Lat(1,1) ))/90,tiltview);
       elseif USLat(i+USpoints)-USLat(i-1+USpoints)>=0 %% northern direction
-        %printf('\nUSnd%d',i)      
-        fprintf(id,'\n  <longitude>%f</longitude><latitude>%f</latitude><altitude>%f</altitude>',USLong(i+USpoints)+longviewoffset*(90-abs(Lat(1,1) ))/90,USLat(i+USpoints)-latviewoffset,altitudeview);
-        fprintf(id,'\n  <heading>%f</heading><tilt>%f</tilt><roll>0</roll>',headingviewoffset*(90-abs(Lat(1,1) ))/90,tiltview);
+        fprintf('\n USnd i=%d size USLat=%f USLong=%f',i, size(USLat,1),size(USLong,1))      
+        fprintf('<longitude>%f</longitude><latitude>%f</latitude>i+USpoints=%d',USLong(i+USpoints)+longviewoffset*(90-abs(USLat(i+USpoints,1) ))/90,USLat(i+USpoints)-latviewoffset,i+USpoints);
+        fprintf(id,'\n  <longitude>%f</longitude><latitude>%f</latitude><altitude>%f</altitude>',USLong(i+USpoints)+longviewoffset*(90-abs(USLat(i+USpoints,1) ))/90,USLat(i+USpoints)-latviewoffset,altitudeview);
+        fprintf(id,'\n  <heading>%f</heading><tilt>%f</tilt><roll>0</roll>',headingviewoffset*(90-abs(USLat(i+USpoints,1) ))/90,tiltview);
 %       fprintf(id,'\n  <longitude>%f</longitude><latitude>%f</latitude><altitude>%f</altitude>',  Long(1,i)       +longviewoffset*(90-abs(Lat(1,i) ))/90,  Lat(1,i)        -latviewoffset,altitudeview);
 %       fprintf(id,'\n  <heading>%f</heading><tilt>%f</tilt><roll>0</roll>',headingviewoffset*(90-abs(Lat(1,i) ))/90,tiltview);
 
@@ -699,7 +750,8 @@ function writeKML(Lat,Long,rs,t,ns,angles,modelfilename,footprintsize)
       fprintf(id,'\n  <when> %s </when>',pointintime);
     end
     for i=1:size(t,2)
-      fprintf(id,'\n  <gx:angles>%f %f %f</gx:angles>',angles(2,j-1,i),angles(1,j-1,i),angles(3,j-1,i));%% yaw,pitch, roll 
+      %fprintf(id,'\n  <gx:angles>%f %f %f</gx:angles>',angles(2,j-1,i),angles(1,j-1,i),angles(3,j-1,i));%% yaw,pitch, roll 
+      fprintf(id,'\n  <gx:angles>%f %f %f</gx:angles>',yawvgrid(j-1,i),pitchvgrid(j-1,i),rollvgrid(j-1,i));%% yaw,pitch, roll 
     end 
     fprintf(id,'\n  </gx:Track></Placemark>');
    end
