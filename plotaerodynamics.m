@@ -11,9 +11,6 @@ f1=bigaerodynamics(theta, phi,panels);
 [pitch yaw]=pitchyaw(theta, phi);
     
 
-
-
-
 %% compute aerodynamics of 2
 %f2=[mean(f1(1,:)) 0 0]; 
 f2=[0 0 0]; 
