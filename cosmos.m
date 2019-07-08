@@ -35,58 +35,71 @@ r0=radiusOfEarth+altitude; %% in m
 omega=sqrt(mu/r0^3);
 [P,IR,A,B]=riccatiequation(omega);
 
-ns=3;                   %% number of satellites
+ns=2;                   %% number of satellites
 
 %% scaling factor
 C3=100;               %% size of formation
 C4=1000;               %% deployment
 
 %% timespan to simulate
-totaltime=6*60*60;     %% in s
-startsecondphase=6*60*60;     %% in s
+totaltime=20*2*pi/omega ;    %% in s
+startsecondphase=120*2*pi/omega;     %% in s
 currenttime=0;          %% now, should usually be 0
-ttime=[0];
-comp_step=1;            %% computational step size
-tspan=0:comp_step:1800; %% duration and interpolation timestep for each control loop. ODE45 chooses its one optimal timestep. 150s total duration is consistent with Ivanov
-vis_step=2;             %% visualization step size
-accelerationfactor=60;
-fprintf('\n duration of movie %f min',totaltime/vis_step/accelerationfactor/60) %% length of animation in min: totaltime/vis_step/accelerationfactor/60
-%angles(ns,size(tspan,1));
-%size(angles)
+
+time=[0];
+comp_step=6;            %% computational step size
+lengthcontrolloop=180;
+timetemp=0:comp_step:lengthcontrolloop; %% duration and interpolation timestep for each control loop. ODE45 chooses its one optimal timestep. 150s total duration is consistent with Ivanov
+fprintf('\n number of float variables for each control loop: %d, size %f kbyte',size(timetemp,2)*(1+6+6+3)+6+1,(size(timetemp,2)*(1+6+6+3)+6+1)*4/1024); %% size of time vector, state vector, desired state vector and anglevector, C and omega of analytical solution
+
+%% parameters for visualization
+accelerationfactor=120;
+vis_step=60;             %% visualization step size
+fprintf('\n duration of movie without US %f min\n',totaltime/accelerationfactor/60) %% length of animation in min: totaltime/vis_step/accelerationfactor/60
+%! there are more parameters in the visualization function
+
 %% initial conditions of ODE
 sst=zeros(6,ns);        %% columns: statevector per each satellite
-ssttemp=zeros(6,ns,size(tspan,2));
+ssttemp=zeros(6,ns,size(timetemp,2));
 angles=zeros(3,ns);
-anglestemp=zeros(3,ns,size(tspan,2));
+u=zeros(3,ns);%% control vector
+anglestemp=zeros(3,ns,size(timetemp,2));
+utemp=zeros(3,ns,size(timetemp,2));
 for i=1:ns
+    ssttemp(:,i,end)=0;
     %ssttemp(:,i,end)=CCCC*[(i-1)*5 0 0 0 0 0]';
     %ssttemp(:,i,end)=C4*[(i-1)*5 0 0 0.015 0.015 0.015]';
-    ssttemp(:,i,end)=C4*[(i-1)*5 0 0 0.00015 0.00015 0.00015]';
+    %ssttemp(:,i,end)=C4*[(i-1)*5 0 0 0.00015 0.00015 0.00015]';
     %ssttemp(:,i,end)=CCCC*[(i-1)*5 0 0 rand*0.015 rand*0.015 rand*0.015]';
     %ssttemp(:,i,end)=CCCC*[(i-1)*0.5*10 0 0 0.0 0.015 0.015]';
     %sst(:,1)=[0 0 0 0.015 0.005 0.015]';
     %sst(:,2)=[15 0 0 0.005 0.015 0.015]';
 end
 sst(:,:)=ssttemp(:,:,end);
-
 %% solving the ODE for each control step
 
 %% desired statevector I
-AAA=1000;
-DDD=100;
-xd=zeros(6,ns,size(tspan,2)); %% columns: desired statevector per each satellite
+AAA=500;
+DDD=500;
+xd=zeros(6,ns,size(timetemp,2)); %% columns: desired statevector per each satellite
+
+%% use 1 Matlab ODE, 2 home made, or 3 home made non vector based
+UMOO=2;
 
 %% parameters for ODE45
 opts = odeset('RelTol',1e-2,'AbsTol',1e-4);
 
 tic
-while currenttime<totaltime
+while currenttime<totaltime    
   if currenttime<startsecondphase    %% initial desired vector
     %% desired statevector II
-    xd(1,1,:)=-C3*DDD;
-    %xd(2,2,:)=C3*AAA*sqrt(3)*sin(omega*(currenttime+tspan));
-    xd(2,2,:)=C3*AAA*sqrt(3)*cos(omega*(currenttime+tspan));
-    xd(1,3,:)=C3*DDD;
+
+    xd(1,2,:)=C3*DDD;
+
+    %xd(1,1,:)=-C3*DDD;
+    %%xd(2,2,:)=C3*AAA*sqrt(3)*sin(omega*(currenttime+tspan));
+    %xd(2,2,:)=C3*AAA*sqrt(3)*sin(omega*(currenttime+timetemp));
+    %xd(1,3,:)=C3*DDD;
 
     %xd(1,3,:)=CCC*2*AAA*cos(omega*(currenttime+tspan)-acos(1/3));
     %xd(2,3,:)=CCC*AAA*sqrt(3)*sin(omega*(currenttime+tspan));
@@ -98,7 +111,7 @@ while currenttime<totaltime
   else                      %% switch to new desired statevector
     %% desired statevector II
     xd(1,1,:)=-sc*C3*DDD;
-    xd(2,2,:)=sc*C3*AAA*sqrt(3)*sin(omega*(currenttime+tspan));
+    xd(2,2,:)=sc*C3*AAA*sqrt(3)*sin(omega*(currenttime+timetemp));
     xd(1,3,:)=sc*C3*DDD;
     
     %xd(1,3,:)=sc*C3*2*AAA*cos(omega*(currenttime+tspan)-acos(-3/3));
@@ -109,93 +122,67 @@ while currenttime<totaltime
     %xd(2,4,:)=sc*C3*AAA*sqrt(3)*sin(omega*(currenttime+tspan)+acos(1/3));
     %xd(3,4,:)=sc*C3*AAA*sin(omega*(currenttime+tspan));   
   end
-  for i=1:ns
-    %% solve ODE      
-    %input('0')
-    [t,x]=ode23(@(t,x) hcwequation(t,x,IR,P,A,B,xd(:,i,:),currenttime,tspan),tspan,ssttemp(:,i,size(ssttemp,3)),opts);
-    ssttemp(:,i,:)=x';  %% columns: statevector, rows: (x,y,z,u,v,w), depth: timeevolution 
-    %input('a')
-
-    %% get data out of ODE
-    [a1,anglestemp(:,i,:),u]=hcwequation(t,x',IR,P,A,B,xd(:,i,:),currenttime,tspan);
-    clear hcwequation
-    %input('b');
-    %input('abc')
+  if UMOO==1
+    for i=1:ns
+        %% solve ODE      
+        [t,x]=ode23(@(t,x) hcwequation(t,x,IR,P,A,B,xd(:,i,:),currenttime,timetemp),timetemp,ssttemp(:,i,size(ssttemp,3)),opts);
+        ssttemp(:,i,:)=x';  %% columns: statevector, rows: (x,y,z,u,v,w), depth: timeevolution   
+        %% get data out of ODE
+        [a1,anglestemp(:,i,:),u]=hcwequation(t,x',IR,P,A,B,xd(:,i,:),currenttime,timetemp);
+        clear hcwequation
+     end
+  elseif UMOO==2 %% use home made vector based solver: Euler backward
+      x(:,:,1)=ssttemp(:,:,end);
+      %% apply disturbances
+      %x(:,:,1)=x(:,:,1)*1.01
+      flops=0;
+      for j=1:size(timetemp,2)-1
+            for i=1:ns
+                e(:,i,j)=x(:,i,j)-xd(:,i,j);
+                flops=flops+6;
+            end
+            %% modify error vector with some averages according to Ivanov
+            x(:,1,j+1)=[0 0 0 0 0 0]';
+            anglestemp(:,1,j+1)=[45 0 0];
+            utemp(:,1,j+1)=[-1.2 0 0]';
+            anglestemp(:,1,j+1)=45;
+            for i=2:ns
+                [x(:,i,j+1),anglestemp(:,i,j+1),utemp(:,i,j+1)]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),x(:,i,j),e(:,i,j),flops);
+            end 
+      end
+      ssttemp(:,:,:)=x;  %% columns: statevector, rows: (x,y,z,u,v,w), depth: timeevolution
+  elseif UMOO==3 %% use home made loop based solver
+    ;
+  else
+    fprintf('error in choosing ODE solver');
   end
   %% append data of last control loop to global data vector
   sst=cat(3,sst,ssttemp(:,:,2:end));  
   angles=cat(3,angles,anglestemp(:,:,2:end));  
-  ttime=[ttime ; currenttime+t(2:end)];  
+  u=cat(3,u,utemp(:,:,2:end));   
+  time=[time ; currenttime+timetemp(2:end)'];  
+  %ttime=[ttime ; currenttime+t(2:end)];  
   %% print progress of iterations to screen
+  %fprintf('\n flops %d',flops);
   if currenttime>0
     fprintf('\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b')
   end
-  currenttime=ttime(end);
+  currenttime=time(end);
   fprintf('time %2.1e / totaltime %2.1e, progress %2.1e %%', currenttime, totaltime,currenttime/totaltime*100);
 end
 toc
-%angles(:,:,:)=0;
-
+for i=1:ns
+    angles(:,i,1)=[0 0 0]';
+end
 %% map on globe and create kml file
-visualization(ns,ttime,squeeze(sst(1,:,:)),squeeze(sst(2,:,:)),squeeze(sst(3,:,:)),altitude,angles, modelfilename,radiusOfEarth,mu,vis_step,accelerationfactor)
+plotting(angles,sst,time,ns,omega,u)
 
-plotting(angles,sst,ttime,ns)
+%visualization(ns,time,squeeze(sst(1,:,:)),squeeze(sst(2,:,:)),squeeze(sst(3,:,:)),altitude,angles, modelfilename,radiusOfEarth,mu,vis_step,accelerationfactor)
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-function plotting(angles,sst,ttime,ns)
-    figure
-       subplot(2,3,1)%% pitch
-         for i=1:ns
-           plot(squeeze(ttime/3600),squeeze(angles(1,i,:)));hold on
-           names(i)=[{strcat('sat',int2str(i))}];
-         end
-        ylabel('pitch angle [deg]');xlabel('time [h]');legend(names);grid on;hold off
-        subplot(2,3,2)%%yaw
-        for i=1:ns
-           plot(squeeze(ttime/3600),squeeze(angles(2,i,:)));hold on
-        end
-        ylabel('yaw angle [deg]');xlabel('time [h]');grid on;hold off
-        subplot(2,3,3)%%roll
-        for i=1:ns
-           plot(squeeze(ttime/3600),squeeze(angles(3,i,:)));hold on
-        end
-        ylabel('roll angle [deg]');xlabel('time [h]');grid on;hold off
-        subplot(2,3,4)%%x
-        for i=1:ns
-           plot(squeeze(ttime/3600),squeeze(sst(1,i,:)));hold on
-        end
-        ylabel('x [m]');xlabel('time [h]');grid on;hold off
-        subplot(2,3,5)%%y
-        for i=1:ns
-           plot(squeeze(ttime/3600),squeeze(sst(2,i,:)));hold on
-        end
-        ylabel('y [m]');xlabel('time [h]');grid on;hold off
-        subplot(2,3,6)%%z
-        for i=1:ns
-           plot(squeeze(ttime/3600),squeeze(sst(3,i,:)));hold on
-        end
-        ylabel('z [m]');xlabel('time [h]');grid on;hold off
-        
-    figure
-        for i=1:ns
-          plot3(squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'-');hold on
-          names(i)=[{strcat('sat',int2str(i))}];
-        end
-        xlabel('X [m]');ylabel('Y [m]');zlabel('Z [m]');legend(names);grid on;hold off
-        if 0
-          axis(sc*[-35e3 35e3 -35e3 35e3 -35e3 35e3])
-          xticks(sc*[-20e3 0 20e3]);yticks(sc*[-20e3 0 20e3]);zticks(sc*[-20e3 0 20e3]);
-          set(gcf,'PaperUnits', 'inches','PaperPosition', [0 0 2 2]) ;
-          fprintf('2by2','-dpng','-r0')
-        end
-end    
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -210,6 +197,8 @@ function [dxdt,anglestemp,u]=hcwequation(t,x,IR,P,A,B,xdi,currenttime,timespan)
   v=7500; %% m/s
   S=0.1^2; %% m2
   k=1/satmass*density*v^2*S;
+  umax=-k*1.2/satmass;
+  uyzmax=k*0.24/satmass;
   xdi2x = interp1(currenttime+timespan,squeeze(xdi(1,1,:)),currenttime+t);% Interpolate the data set (ft,f) at time t
   xdi2y = interp1(currenttime+timespan,squeeze(xdi(2,1,:)),currenttime+t); % Interpolate the data set (ft,f) at time t
   xdi2z = interp1(currenttime+timespan,squeeze(xdi(3,1,:)),currenttime+t); % Interpolate the data set (ft,f) at time t
@@ -219,8 +208,6 @@ function [dxdt,anglestemp,u]=hcwequation(t,x,IR,P,A,B,xdi,currenttime,timespan)
   %% control vector
   u1=-IR*B'*P*e;
   
-  umax=-k*1.2/satmass;
-  uyzmax=k*0.24/satmass;
   u=u1;%-[umax/2 0 0]'; %% to set u to a default value and size u correctly
   %{
   for i=1:size(u,2)
@@ -255,20 +242,113 @@ function [dxdt,anglestemp,u]=hcwequation(t,x,IR,P,A,B,xdi,currenttime,timespan)
       anglestemptemp(3,i) = asind( u(3,i)./sqrt( u(2,i)^2 + u(3,i)^2));%roll
       %fprintf('\n u1temp %f umax %f',u1temp,umax);
   end
+  %% getting angles
   if size(ang,1)>0 && size(x,2)==1 %% TBC: enter only when solving ODE but not first time
     ang=[ang  anglestemptemp];
-    %fprintf('\n 1');
   elseif size(ang,1)==0 && size(x,2)==1%% TBC: enter only when solving ODE,first time
     ang=anglestemptemp;
-    %fprintf('\n 2');
   elseif size(ang,1)>0 && size(x,2)>1%% TBC: enter when getting all angles  
     ang=anglestemptemp;
-    %fprintf('\n 3');
-  %else
-  %    fprintf('\n getting the angles')
+  else
+    fprintf('\n error with getting the angles')
   end
   anglestemp=ang;
   dxdt=A*x+B*u;
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function [x,anglestemptemp,utemptemp]=hcwequation2(IR,P,A,B,deltat,x0,e,flops)
+%% HCW equation
+  satmass=2; %% kg
+  density=1e-8; %%kg/m3
+  v=7500; %% m/s
+  S=0.1^2; %% m2
+  k=1/satmass*density*v^2*S;
+  umax=1.19;
+  uyzmax=0.19;
+  eta=0.1;    
+  eps=0.1;
+
+  %% control vector
+  u1(:)=-IR*B'*P*e(:);
+  flops=flops+1e6;
+  
+  unondim=u1/k;%+umax/2;%-[umax/2 0 0]'; %% to set u to a default value and size u correctly
+  flops=flops+3;
+  
+  %plot([0:5:180],-2*eps*(sind([0:5:180])).^3+eta*(eps-1)*(sind([0:5:180])).^2+(eps-1)*sind([0:5:180]))
+  %syms theta;
+  %eqn = -1==-2*eps*(sind(theta)).^3+eta*(eps-1)*(sind(theta)).^2+(eps-1)*sind(theta);
+  %solx = vpa(solve(eqn,theta))
+   
+  %{
+  theta2=0:5:90;
+  for i=1:size(theta2,2)
+      p(i)=-2*eps*(sind(theta2(i)))^3+eta*(eps-1)*(sind(theta2(i)))^2+(eps-1)*sind(theta2(i));
+      g(i)=-cosd(theta2(i))*sind(theta2(i))*(eta-eps*eta+2*eps*sind(theta2(i)));
+      p2(i)=-1.2*sind(theta2(i));
+      g2(i)=-0.12*sind(2*theta2(i));
+  end
+  plot(theta2,p,theta2,g,theta2,p2,theta2,g2)
+  %}
+  
+  
+  %phi1=acos(unondim(2)/sqrt(unondim(2)^2+unondim(3)^2));
+  %phi2=asin(unondim(3)/sqrt(unondim(2)^2+unondim(3)^2));
+  %input('a')
+ %{ 
+    if unondim(1)>=1/2*umax; %% going forward with drag
+      unondim(1)=1/2*umax;
+      unondim(2)=0;
+      unondim(3)=1/2*umax*100;
+    elseif unon(1)<=-1/2*umax %% going backward 
+      unondim(1)=-1/2*umax;
+      unondim(2)=0;
+      unondim(3)=0;
+    %elseif sqrt(u(2,i)^2+u(3,i)^2)>uyzmax
+      %  u(1,i)=-0.8;
+      %  u(2,i)=u1(2,i)/uyzmax;
+      %  u(3,i)=u1(3,i)/uyzmax;
+    else 
+      print('error')
+    end
+  
+  if unondim(1)<0
+    u1temp=-unondim(1);
+  else
+    u1temp=unondim(1);
+  end
+  %}
+  
+  %p2(i)=-1.2*sind(theta2(i));
+  %g2(i)=-0.12*sind(2*theta2(i));
+  
+  if unondim(1)>umax/2
+      unondim(1)=umax/2;
+      unondim(2)=0;
+      unondim(3)=0;
+  elseif unondim(1)<-umax/2
+      unondim(1)=-umax/2;
+      unondim(2)=0;
+      unondim(3)=0;
+  end
+  anglestemptemp(1)=asind(-1/1.2*(unondim(1)-1/2*umax));
+  anglestemptemp(2)=0;
+  anglestemptemp(3)=0;
+  %anglestemptemp(1) = asind( unondim(3)./sqrt( unondim(1)^2 + unondim(3)^2));%pitch
+  %anglestemptemp(2) = asind( unondim(2)./sqrt( unondim(1)^2 + unondim(2)^2));%yaw
+  %anglestemptemp(3) =0;% asind( u(3)./sqrt( u(2)^2 + u(3)^2));%roll
+  flops=flops+1e6;
+  
+  %e'
+  %u
+  %anglestemptemp
+  udim=unondim*k;
+  utemptemp=unondim;
+  x(:)=(A*x0(:)+B*udim(:))*deltat+x0(:);
+  flops=flops+1e6; 
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -386,7 +466,8 @@ function visualization(ns,ttime,sstx,ssty,sstz,altitude,angles,modelfilename,rad
       %MAXY=sqrt(max(sstxvgrid(j,i)^2+sstyvgrid(j,i)^2));
     %end
     MAXY=abs(sstyvgrid(2,i));
-    footprintsize(i)=MAXY*2e2;%round(  MAXY/10^floor(log10(MAXY)) )  *  1e4;
+    %footprintsize(i)=MAXY*1e2;%round(  MAXY/10^floor(log10(MAXY)) )  *  1e4;
+    footprintsize(i)=(200000-10000)/2000*MAXY+10000;%round(  MAXY/10^floor(log10(MAXY)) )  *  1e4;
   end
   %% centerpoint
   Lat(1,:)     =  asin(sin(inclination).*sin(theta))/pi*180;              % Latitude             [deg]
@@ -428,24 +509,30 @@ function visualization(ns,ttime,sstx,ssty,sstz,altitude,angles,modelfilename,rad
       end
   end
 figure
-      subplot(3,1,1)
+      subplot(4,1,1)
       for j=1:ns
-        plot(t,sstxvgrid(j,:))
+        plot(t/3600,sstxvgrid(j,:))
         hold on
       end
-      ylabel("x");
-      subplot(3,1,2)
+      ylabel('x [m]');xlabel('time [h]');grid on;hold off
+      subplot(4,1,2)
       for j=1:ns
-        plot(t,sstyvgrid(j,:))
+        plot(t/3600,sstyvgrid(j,:))
         hold on
       end
-      ylabel("y");      
-      subplot(3,1,3)
+      ylabel('y [m]');xlabel('time [h]');grid on;hold off
+      subplot(4,1,3)
       for j=1:ns
-        plot(t,sstzvgrid(j,:))
+        plot(t/3600,sstzvgrid(j,:))
         hold on
       end
-      ylabel("z");
+      ylabel('z [m]');xlabel('time [h]');grid on;hold off
+      subplot(4,1,4)
+      for j=1:ns
+        plot(t/3600,footprintsize)
+        hold on
+      end
+      ylabel('footprint [m]');xlabel('time [h]');grid on;hold off
       
 %  figure
 %      subplot(2,1,1)
@@ -463,13 +550,13 @@ figure
    figure
       subplot(3,1,1)
       for j=1:ns+1
-        plot(t,Lat(j,:))
+        plot(t/3600,Lat(j,:),t/3600,footprintsize/3e4,t/3600,sstyvgrid(2,:)/50)
         hold on
       end
       ylabel("Lat");
       subplot(3,1,2)
       for j=1:ns+1
-        plot(t,Long(j,:))
+        plot(t/3600,Long(j,:))
         hold on
       end
       ylabel("Long");
@@ -505,6 +592,7 @@ function writeKML(Lat,Long,rs,t,ns,pitchvgrid,yawvgrid,rollvgrid,modelfilename,f
   modelscalex=2000;
   modelscaley=2000;
   modelscalez=2000;
+  vis_duration=1;
   
   tourjumpduration=zeros(1,size(t,2));
   tourjumpduration(2:end)=(t(2:end)-t(1:end-1))/accelerationfactor;
@@ -596,7 +684,7 @@ function writeKML(Lat,Long,rs,t,ns,pitchvgrid,yawvgrid,rollvgrid,modelfilename,f
   end
   %}
   for i=1:size(t,2) %% shift longitude from 0-360 deg to +/- 180
-    for j=1:ns
+    for j=1:ns+1
       if Long(j,i)<-180
         Long(j,i)=Long(j,i)+360;
       end
@@ -613,8 +701,7 @@ function writeKML(Lat,Long,rs,t,ns,pitchvgrid,yawvgrid,rollvgrid,modelfilename,f
   id=fopen(filename,'w'); %% write kml file
   fprintf(id,'<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">');
   fprintf(id,'\n<Folder> ');
-  fprintf(id,'\n  <Style id="stylesel_0"><IconStyle><Icon><href></href></Icon></IconStyle><LabelStyle><scale>0.3</scale></LabelStyle></Style>');
-  fprintf(id,'\n  <Style id="circle"><IconStyle><Icon><href>figures%scircle.png</href></Icon></IconStyle><LabelStyle><scale>0.3</scale></LabelStyle></Style>',filesep);
+  fprintf(id,'\n  <Style id="stylesel_0"><IconStyle><Icon><href></href></Icon></IconStyle><LabelStyle><scale>0</scale></LabelStyle></Style>');
 
   %% initial camera viewpoint
 %  fprintf(id,'\n<Camera>');
@@ -638,26 +725,21 @@ function writeKML(Lat,Long,rs,t,ns,pitchvgrid,yawvgrid,rollvgrid,modelfilename,f
     if i<USpoints
       fprintf(id,'\n<gx:FlyTo><gx:flyToMode>smooth</gx:flyToMode><gx:duration>%f</gx:duration><Camera>',USjumpduration);
       pointintime=strcat(datestr(initialtime+UStime(i+USpoints)/24/60/60,29),'T',datestr(initialtime+UStime(i+USpoints)/24/60/60,13),'Z');
-      pointintimeb=strcat(datestr(initialtime+UStime(i+USpoints)/24/60/60-0.2/24/60/60,29),'T',datestr(initialtime+UStime(i+USpoints)/24/60/60-0.2/24/60/60,13),'Z');
-      pointintimee=strcat(datestr(initialtime+UStime(i+USpoints)/24/60/60+0.2/24/60/60,29),'T',datestr(initialtime+UStime(i+USpoints)/24/60/60+0.2/24/60/60,13),'Z');
+      pointintimeb=strcat(datestr(initialtime+UStime(i+USpoints)/24/60/60-vis_duration/24/60/60,29),'T',datestr(initialtime+UStime(i+USpoints)/24/60/60-vis_duration/24/60/60,13),'Z');
+      pointintimee=strcat(datestr(initialtime+UStime(i+USpoints)/24/60/60+vis_duration/24/60/60,29),'T',datestr(initialtime+UStime(i+USpoints)/24/60/60+vis_duration/24/60/60,13),'Z');
       %fprintf(id,'\n		    <gx:TimeStamp><when> %s </when></gx:TimeStamp>',pointintime');
       fprintf(id,'\n  <gx:TimeSpan><begin>%s</begin><end>%s</end></gx:TimeSpan>',pointintimeb,pointintimee);
       %% set viewpoint and heading to according to flight direction
       if i==-USpoints+1  %% first point
-        fprintf(id,'\n  <longitude>%f</longitude><latitude>%f</latitude><altitude>%f</altitude>',USLong(i+USpoints)+longviewoffset*(90-abs(Lat(1,1) ))/90,USLat(i+USpoints)-latviewoffset,altitudeview);
-        fprintf(id,'\n  <heading>%f</heading><tilt>%f</tilt><roll>0</roll>',headingviewoffset*(90-abs(Lat(1,1) ))/90,tiltview);
+        fprintf(id,'\n  <longitude>%f</longitude><latitude>%f</latitude><altitude>%f</altitude>',USLong(i+USpoints)+longviewoffset*(90-abs(USLat(1,1) ))/90,USLat(i+USpoints)-latviewoffset,altitudeview);
+        fprintf(id,'\n  <heading>%f</heading><tilt>%f</tilt><roll>0</roll>',headingviewoffset*(90-abs(USLat(1,1) ))/90,tiltview);
       elseif USLat(i+USpoints)-USLat(i-1+USpoints)>=0 %% northern direction
-        fprintf('\n USnd i=%d size USLat=%f USLong=%f',i, size(USLat,1),size(USLong,1))      
-        fprintf('<longitude>%f</longitude><latitude>%f</latitude>i+USpoints=%d',USLong(i+USpoints)+longviewoffset*(90-abs(USLat(i+USpoints,1) ))/90,USLat(i+USpoints)-latviewoffset,i+USpoints);
         fprintf(id,'\n  <longitude>%f</longitude><latitude>%f</latitude><altitude>%f</altitude>',USLong(i+USpoints)+longviewoffset*(90-abs(USLat(i+USpoints,1) ))/90,USLat(i+USpoints)-latviewoffset,altitudeview);
         fprintf(id,'\n  <heading>%f</heading><tilt>%f</tilt><roll>0</roll>',headingviewoffset*(90-abs(USLat(i+USpoints,1) ))/90,tiltview);
-%       fprintf(id,'\n  <longitude>%f</longitude><latitude>%f</latitude><altitude>%f</altitude>',  Long(1,i)       +longviewoffset*(90-abs(Lat(1,i) ))/90,  Lat(1,i)        -latviewoffset,altitudeview);
-%       fprintf(id,'\n  <heading>%f</heading><tilt>%f</tilt><roll>0</roll>',headingviewoffset*(90-abs(Lat(1,i) ))/90,tiltview);
-
       elseif USLat(i+USpoints)-USLat(i-1+USpoints)<0  %% southern direction
         %printf('\nUSsd%d',i)
-        fprintf(id,'\n  <longitude>%f</longitude><latitude>%f</latitude><altitude>%f</altitude>',USLong(i+USpoints+1)-longviewoffset*(90-abs(Lat(1,1) ))/90,USLat(i+USpoints+1)+latviewoffset,altitudeview);
-        fprintf(id,'\n  <heading>%f</heading><tilt>%f</tilt><roll>0</roll>',180+headingviewoffset*(90-abs(Lat(1,1) ))/90,tiltview);
+        fprintf(id,'\n  <longitude>%f</longitude><latitude>%f</latitude><altitude>%f</altitude>',USLong(i+USpoints+1)-longviewoffset*(90-abs(USLat(1,1) ))/90,USLat(i+USpoints+1)+latviewoffset,altitudeview);
+        fprintf(id,'\n  <heading>%f</heading><tilt>%f</tilt><roll>0</roll>',180+headingviewoffset*(90-abs(USLat(1,1) ))/90,tiltview);
       else
         fprintf('error')
       end
@@ -668,8 +750,8 @@ function writeKML(Lat,Long,rs,t,ns,pitchvgrid,yawvgrid,rollvgrid,modelfilename,f
     fprintf(id,'\n<gx:FlyTo><gx:flyToMode>smooth</gx:flyToMode><gx:duration>%f</gx:duration><Camera>',tourjumpduration(i));
     milliseconds=round(1000*(initialtime*24*60*60+t(i)-floor(initialtime*24*60*60+t(i))));
     pointintime=strcat(datestr(initialtime+t(i)/24/60/60,29),'T',datestr(initialtime+t(i)/24/60/60,13),'.',num2str(milliseconds),'Z');
-    pointintimeb=strcat(datestr(initialtime+t(i)/24/60/60-0.2/24/60/60,29),'T',datestr(initialtime+t(i)/24/60/60-0.2/24/60/60,13),'.',num2str(milliseconds),'Z');
-    pointintimee=strcat(datestr(initialtime+t(i)/24/60/60+0.2/24/60/60,29),'T',datestr(initialtime+t(i)/24/60/60+0.2/24/60/60,13),'.',num2str(milliseconds),'Z');
+    pointintimeb=strcat(datestr(initialtime+t(i)/24/60/60-vis_duration/24/60/60,29),'T',datestr(initialtime+t(i)/24/60/60-vis_duration/24/60/60,13),'.',num2str(milliseconds),'Z');
+    pointintimee=strcat(datestr(initialtime+t(i)/24/60/60+vis_duration/24/60/60,29),'T',datestr(initialtime+t(i)/24/60/60+vis_duration/24/60/60,13),'.',num2str(milliseconds),'Z');
     %fprintf(id,'\n		    <gx:TimeStamp><when> %s </when></gx:TimeStamp>',pointintime');
     fprintf(id,'\n  <gx:TimeSpan><begin>%s</begin><end>%s</end></gx:TimeSpan>',pointintimeb,pointintimee);
     %% set viewpoint and heading to according to flight direction
@@ -758,13 +840,13 @@ function writeKML(Lat,Long,rs,t,ns,pitchvgrid,yawvgrid,rollvgrid,modelfilename,f
    k=1;
    while k<size(footprintsize,2)
      fprintf(id,'\n<Placemark><name>centerpoint</name><styleUrl>#stylesel_0</styleUrl>>');     
-     fprintf(id,'\n   <Model id="geom_1"><altitudeMode>clampToGround</altitudeMode>');
+     fprintf(id,'\n   <Model id="geom_1"><altitudeMode>relativeToGround</altitudeMode>');
      fprintf(id,'\n       <Orientation><heading>90.0</heading><tilt>0</tilt><roll>0</roll></Orientation>');        
      fprintf(id,'\n       <Scale><x>%f</x><y>%f</y><z>%f</z></Scale>',footprintsize(k),footprintsize(k),footprintsize(k)); 
      fprintf(id,'\n       <Location>');
-     fprintf(id,'\n        <longitude>%f</longitude> <!-- kml:angle180 -->',Long(1,k));
-     fprintf(id,'\n        <latitude>%f</latitude>   <!-- kml:angle90 -->',Lat(1,k));
-     %fprintf(id,'\n       <altitude>%f</altitude>  <!-- double -->',100);
+     fprintf(id,'\n        <longitude>%f</longitude> <!-- kml:angle180 -->',Long(1,k)); %% below virtual satellite
+     fprintf(id,'\n        <latitude>%f</latitude>   <!-- kml:angle90 -->',Lat(1,k));%% below virtual satellite
+     fprintf(id,'\n       <altitude>%f</altitude>  <!-- double -->',100);
      fprintf(id,'\n       </Location>');
      fprintf(id,'\n       <Link id="link_1"><href>figures%storus.dae</href></Link>',filesep);
      fprintf(id,'\n    </Model>');
@@ -859,3 +941,72 @@ function [P,IR,A,B]=riccatiequation(omega)
   E2=eye(6);
  [P,L,G] = care(A,B,Q,R,S,E2);
 end
+
+function plotting(angles,sst,ttime,ns,omega,u)
+    figure
+       subplot(3,3,1)%% pitch
+         for i=1:ns
+%           plot(squeeze(ttime/3600),squeeze(angles(1,i,:)));hold on
+           plot(squeeze(ttime/2/pi*omega),squeeze(angles(1,i,:)));hold on
+           names(i)=[{strcat('sat',int2str(i))}];
+         end
+        ylabel('pitch angle [deg]');xlabel('time [h]');legend(names);grid on;hold off
+        subplot(3,3,2)%%yaw
+        for i=1:ns
+           plot(squeeze(ttime/3600),squeeze(angles(2,i,:)));hold on
+        end
+        ylabel('yaw angle [deg]');xlabel('time [h]');grid on;hold off
+        subplot(3,3,3)%%roll
+        for i=1:ns
+           plot(squeeze(ttime/3600),squeeze(angles(3,i,:)));hold on
+        end
+        ylabel('roll angle [deg]');xlabel('time [h]');grid on;hold off
+        subplot(3,3,4)%%x
+        for i=1:ns
+           plot(squeeze(ttime/3600),squeeze(sst(1,i,:)));hold on
+        end
+        ylabel('x [m]');xlabel('time [h]');grid on;hold off
+        subplot(3,3,5)%%y
+        for i=1:ns
+           plot(squeeze(ttime/3600),squeeze(sst(2,i,:)));hold on
+        end
+        ylabel('y [m]');xlabel('time [h]');grid on;hold off
+        subplot(3,3,6)%%z
+        for i=1:ns
+           plot(squeeze(ttime/3600),squeeze(sst(3,i,:)));hold on
+        end
+        ylabel('z [m]');xlabel('time [h]');grid on;hold off
+        subplot(3,3,7)%%u1
+        for i=1:ns
+           plot(squeeze(ttime/3600),squeeze(u(1,i,:)));hold on
+        end
+        ylabel('u1');xlabel('time [h]');grid on;hold off
+        subplot(3,3,8)%%u2
+        for i=1:ns
+           plot(squeeze(ttime/3600),squeeze(u(2,i,:)));hold on
+        end
+        ylabel('u2');xlabel('time [h]');grid on;hold off
+        subplot(3,3,9)%%u3
+        for i=1:ns
+           plot(squeeze(ttime/3600),squeeze(u(3,i,:)));hold on
+        end
+        ylabel('u3');xlabel('time [h]');grid on;hold off
+        
+    figure
+        for i=1:ns
+          plot3(squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'-');hold on
+          names(i)=[{strcat('sat',int2str(i))}];
+        end
+        xlabel('X [m]');ylabel('Y [m]');zlabel('Z [m]');legend(names);grid on;hold off
+        if 0
+          axis(sc*[-35e3 35e3 -35e3 35e3 -35e3 35e3])
+          xticks(sc*[-20e3 0 20e3]);yticks(sc*[-20e3 0 20e3]);zticks(sc*[-20e3 0 20e3]);
+          set(gcf,'PaperUnits', 'inches','PaperPosition', [0 0 2 2]) ;
+          fprintf('2by2','-dpng','-r0')
+        end
+end    
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
