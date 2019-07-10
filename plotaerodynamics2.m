@@ -6,8 +6,10 @@ Rz90=[1 0 0 ; 0 0 -1 ; 0 1 0];
 Iy = [0 1 0]';
 Ix=Rz90*Iy;
 Iz=Rx90*Iy;
-sunlight=[0 1 0]';
-wind=[-1 0 0]';
+solarconstant=1;
+sunlight=solarconstant*[0 1 0]';
+rho=2; v=1;
+wind=rho/2*v^2*[-1 0 0]';
 
 p1 = [1,0,1];p2 = [-1,0,1];p3 = [-1,0,-1];p4 = [1,0,-1];
 p12 = [0.33,0,0.33];p22 = [-0.33,0,0.33];p32 = [-0.33,0,-0.33];p42 = [0.33,0,-0.33];
@@ -41,9 +43,6 @@ lift=zeros(size(gamma,2),size(beta,2),size(alpha,2));
         Ig=Rz2*Ry*Rz*Iy;
 
         [thetaaero(i,j,k) phiaero(i,j,k)]=thetaphi(wind, Ig);
-        thetaaero(i,j,k)
-        phiaero(i,j,k)
-        %input('a')
         [drag(i,j,k) lift(i,j,k)]=aerodraglift(thetaaero(i,j,k),phiaero(i,j,k));
         aeroforcevector=[drag(i,j,k)  lift(i,j,k)*cosd( atand(Ig(3)/Ig(2)) )  lift(i,j,k)*sind( atand(Ig(3)/Ig(2)) )]';
 
@@ -59,13 +58,13 @@ lift=zeros(size(gamma,2),size(beta,2),size(alpha,2));
         line(pg2(:,1), pg2(:,2), pg2(:,3));
         line(pg3(:,1), pg3(:,2), pg3(:,3));
         %vectarrow(sunlight)
-        %hold on;axis equal;legend;
+        %hold on;
         %vectarrow(wind)
         %hold on;axis equal;legend;
         vectarrow(aeroforcevector);
         hold on;
         %vectarrow(sunforcevector)
-        %hold on;axis equal;legend;
+        %hold on;
         %vectarrow(totalforcevector)
         axis equal;hold off;legend;axis([-1 1 -1 1 -1 1])
         pause(0.0001)
