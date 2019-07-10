@@ -36,15 +36,15 @@ delta=zeros(size(alpha,2),size(beta,2),size(gamma,2));
         pg3 = [(Rz2*Ry*Rz*p13')' ; (Rz2*Ry*Rz*p23')' ; (Rz2*Ry*Rz*p33')' ; (Rz2*Ry*Rz*p43')' ; (Rz2*Ry*Rz*p13')'];
         Ig=Rz2*Ry*Rz*Iy;
 
-        [thetaaero(i,j,k) phiaero(i,j,k)]=thepi(Ig);
-        [drag(i,j,k) lift(i,j,k)]=drali(thetaaero(i,j,k),phiaero(i,j,k));
+        [thetaaero(i,j,k) phiaero(i,j,k)]=aerothepi(Ig);
+        [drag(i,j,k) lift(i,j,k)]=aerodrali(thetaaero(i,j,k),phiaero(i,j,k));
         aeroforcevector=[drag(i,j,k)  lift(i,j,k)*cosd( atand(Ig(3)/Ig(2)) )  lift(i,j,k)*sind( atand(Ig(3)/Ig(2)) )]';
 
-        [thetasun(i,j,k) phisun(i,j,k)]=thepi(sunvector);
-        [dragsun(i,j,k) liftsun(i,j,k)]=drali(thetaaero(i,j,k),phisun(i,j,k));
-        sunlightforcevector=[0 0 0]';
+        [thetasun(i,j,k) phisun(i,j,k)]=sunthepi(sunlight,Ig);
+        [dragsun(i,j,k) liftsun(i,j,k)]=sundrali(thetaaero(i,j,k),phisun(i,j,k));
+        sunforcevector=[0 0 0]';
 
-        totalforcevector=aeroforcevector+sunlightforcevector;
+        totalforcevector=aeroforcevector+sunforcevector;
         %% draw
         vectarrow(Ig)
         hold on; axis equal;legend;
@@ -52,9 +52,15 @@ delta=zeros(size(alpha,2),size(beta,2),size(gamma,2));
         line(pg2(:,1), pg2(:,2), pg2(:,3));
         line(pg3(:,1), pg3(:,2), pg3(:,3));
         hold on;axis equal;legend;
-        vectarrow(totalforcevector)
-        hold on;axis equal;legend;
         vectarrow(sunlight)
+        hold on;axis equal;legend;
+        vectarrow([1 0 0]')
+        hold on;axis equal;legend;
+        vectarrow(aeroforcevector)
+        hold on;axis equal;legend;
+        vectarrow(sunforcevector)
+        hold on;axis equal;legend;
+        vectarrow(totalforcevector)
         hold off;axis equal;legend;
         pause(0.0001)
     end
@@ -75,12 +81,20 @@ figure
     plot(gamma,drag,gamma,lift);
     legend;grid on;
 
-function [theta phi]=thepi(vec)
+function [theta phi]=aerothepi(vec)
+  theta=atand(sqrt(vec(3)^2+vec(2)^2)/abs(vec(1)));
+  phi=atand( vec(2) / vec(1));
+end
+function [theta phi]=sunthepi(refvec,vec)
   theta=atand(sqrt(vec(3)^2+vec(2)^2)/abs(vec(1)));
   phi=atand( vec(2) / vec(1));
 end
 
-function [drag lift]=drali(theta,phi)
+function [drag lift]=aerodrali(theta,phi)
+  drag=-abs(sind(theta-90));
+  lift=-sind(2*(theta))*sign(phi);      
+end
+function [drag lift]=sundrali(theta,phi)
   drag=-abs(sind(theta-90));
   lift=-sind(2*(theta))*sign(phi);      
 end
