@@ -91,8 +91,8 @@ function [theta phi]=thetaphi(refvec, vec)
 end
 
 function [drag lift]=aerodraglift(theta,phi)
-  drag=-abs(sind(theta-90));
-  lift=-sind(2*(theta))*sign(phi);      
+  drag=-abs(sind(theta-90)); %%simplified formula
+  lift=-sind(2*(theta))*sign(phi); %% simplified formula     
 end
 function [drag lift]=sundraglift(theta,phi)
   drag=-abs(sind(theta-90));
