@@ -36,9 +36,7 @@ function [drag lift]=sundraglift(theta,phi)
 end
 
 function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypanels,nozpanels,alpha,beta,gamma)
-    
-    %! implement iterations over all panels
-    
+      
     Rx90=[0 1 0 ;-1 0  0 ; 0 0 1];
     Rz90=[1 0 0 ; 0 0 -1 ; 0 1 0];
     Iy = [0 1 0]';
@@ -75,12 +73,12 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
             pg3 = [(Rz2*Ry*Rz*p13')' ; (Rz2*Ry*Rz*p23')' ; (Rz2*Ry*Rz*p33')' ; (Rz2*Ry*Rz*p43')' ; (Rz2*Ry*Rz*p13')'];
             Ig=Rz2*Ry*Rz*Iy;
 
-            [thetaaero(i,j,k) phiaero(i,j,k)]=thetaphi(wind, Ig);
-            [drag(i,j,k) lift(i,j,k)]=aerodraglift(thetaaero(i,j,k),phiaero(i,j,k));
+            [thetaaero(i,j,k),phiaero(i,j,k)]=thetaphi(wind, Ig);
+            [drag(i,j,k),lift(i,j,k)]=aerodraglift(thetaaero(i,j,k),phiaero(i,j,k));
             aeroforcevector=[drag(i,j,k)  lift(i,j,k)*cosd( atand(Ig(3)/Ig(2)) )  lift(i,j,k)*sind( atand(Ig(3)/Ig(2)) )]';
 
-            [thetasun(i,j,k) phisun(i,j,k)]=thetaphi(sunlight,Ig);
-            [dragsun(i,j,k) liftsun(i,j,k)]=sundraglift(thetaaero(i,j,k),phisun(i,j,k));
+            [thetasun(i,j,k),phisun(i,j,k)]=thetaphi(sunlight,Ig);
+            [dragsun(i,j,k),liftsun(i,j,k)]=sundraglift(thetaaero(i,j,k),phisun(i,j,k));
             sunforcevector=[0 0 0]';
 
             totalforcevector(:,i,j,k)=aeroforcevector+sunforcevector;
@@ -126,7 +124,7 @@ function [alpha1,beta1,gamma1]=findBestAerodynamicAngles(totalforcevector,contro
     for k=1:size(gamma,2) %% yaw
       for j=1:size(beta,2) %% pitch
         for i=1:size(alpha,2) %% roll
-            [theta(i,j,k) ~]=thetaphi(totalforcevector(:,i,j,k),controlvector);
+            [theta(i,j,k),~]=thetaphi(totalforcevector(:,i,j,k),controlvector);
         end
       end
     end
