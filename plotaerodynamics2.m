@@ -22,20 +22,6 @@ alpha1
 beta1
 gamma1
 
-function [theta phi]=thetaphi(refvec, vec)
-  theta = atan2d(norm(cross(refvec,vec)), dot(refvec,vec));
-  phi=atand( vec(2) / vec(1));
-end
-
-function [drag lift]=aerodraglift(theta,phi)
-  drag=-abs(sind(theta-90)); %%simplified formula
-  lift=-sind(2*(theta))*sign(phi); %% simplified formula     
-end
-function [drag lift]=sundraglift(theta,phi)
-  drag=-abs(sind(theta-90));
-  lift=-sind(2*(theta))*sign(phi);      
-end
-
 function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypanels,nozpanels,alpha,beta,gamma)
       
     Rx90=[0 1 0 ;-1 0  0 ; 0 0 1];
@@ -44,7 +30,7 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
     Ix=Rz90*Iy;
     Iz=Rx90*Iy;
 
-    p1 = [1,0,1];p2 = [-1,0,1];p3 = [-1,0,-1];p4 = [1,0,-1];
+    p1  = [1,0,1];p2 = [-1,0,1];p3 = [-1,0,-1];p4 = [1,0,-1];
     p12 = [0.33,0,0.33];p22 = [-0.33,0,0.33];p32 = [-0.33,0,-0.33];p42 = [0.33,0,-0.33];
     p13 = [0.66,0,0.66];p23 = [-0.66,0,0.66];p33 = [-0.66,0,-0.66];p43 = [0.66,0,-0.66];
     drag=zeros(size(alpha,2),1);
@@ -57,7 +43,6 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
     phisun=zeros(size(gamma,2),size(beta,2),size(alpha,2));
     drag=zeros(size(gamma,2),size(beta,2),size(alpha,2));
     lift=zeros(size(gamma,2),size(beta,2),size(alpha,2));
-
 
     %for k=1:size(gamma,2) %% yaw
       %for j=1:size(beta,2) %% pitch
@@ -77,37 +62,30 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
 
                 [thetaaero(i,j,k),phiaero(i,j,k)]=thetaphi(wind, Ig);
                 [drag(i,j,k),lift(i,j,k)]=aerodraglift(thetaaero(i,j,k),phiaero(i,j,k));
-                aeroforcevector=[drag(i,j,k)  lift(i,j,k)*cosd( atand(Ig(3)/Ig(2)) )  lift(i,j,k)*sind( atand(Ig(3)/Ig(2)) )]';
-                %aeroforcevector=[drag(i,j,k)  lift(i,j,k)*cosd( phiaero(i,j,k) )  lift(i,j,k)*sind( phiaero(i,j,k) )]';
+                aeroforcevector=[drag(i,j,k)  lift(i,j,k)*cosd( phiaero(i,j,k) )*sign(Ig(2))* sign(Ig(1))  lift(i,j,k) * sind( phiaero(i,j,k) ) * sign( Ig(3) )*sign( Ig(1) ) ]';
 
                 [thetasun(i,j,k),phisun(i,j,k)]=thetaphi(sunlight,Ig);
-                [dragsun(i,j,k),liftsun(i,j,k)]=sundraglift(thetaaero(i,j,k),phisun(i,j,k));
-                if thetasun(i,j,k)<90
-                     sunforcevector=norm(sunlight)*Ig;
-                elseif thetasun(i,j,k)>=90
-                     sunforcevector=-norm(sunlight)*Ig;
-                else
-                    fprintf('error sun force vector');
-                end
+                [dragsun(i,j,k),liftsun(i,j,k)]=sundraglift(thetasun(i,j,k),phisun(i,j,k));
+                sunforcevector=[dragsun(i,j,k)  liftsun(i,j,k)*cosd( phisun(i,j,k) )*sign(Ig(2))* sign(Ig(1))  lift(i,j,k) * sind( phisun(i,j,k) ) * sign( Ig(3) )*sign( Ig(1) ) ]';
+                %if thetasun(i,j,k)<90
+                %     sunforcevector=norm(sunlight)*Ig;
+                %elseif thetasun(i,j,k)>=90
+                %     sunforcevector=-norm(sunlight)*Ig;
+                %else
+                %    fprintf('error sun force vector');
+                %end
 
                 totalforcevector(:,i,j,k)=aeroforcevector+sunforcevector;
             %% draw
-            vectarrow(Ig)
-            hold on; 
-            line(pg(:,1), pg(:,2), pg(:,3));
-            line(pg2(:,1), pg2(:,2), pg2(:,3));
-            line(pg3(:,1), pg3(:,2), pg3(:,3));
-            %vectarrow(sunlight)
-            %hold on;
-            %vectarrow(wind)
-            %hold on;
-            vectarrow(aeroforcevector);
-            hold on;
-            vectarrow(sunforcevector)
-            hold on;
+            vectarrow(Ig);hold on;text(Ig(1),Ig(2),Ig(3),"normal",'HorizontalAlignment','left','FontSize',6);
+            line(pg(:,1), pg(:,2), pg(:,3));line(pg2(:,1), pg2(:,2), pg2(:,3));line(pg3(:,1), pg3(:,2), pg3(:,3));
+            vectarrow(sunlight);hold on;text(sunlight(1),sunlight(2),sunlight(3),"sunlight",'HorizontalAlignment','left','FontSize',6);
+            vectarrow(wind);hold on;text(wind(1),wind(2),wind(3),"wind",'HorizontalAlignment','left','FontSize',6);
+            vectarrow(aeroforcevector);hold on;text(aeroforcevector(1),aeroforcevector(2),aeroforcevector(3),"aeroforce",'HorizontalAlignment','left','FontSize',6);
+            vectarrow(sunforcevector);hold on;text(sunforcevector(1),sunforcevector(2),sunforcevector(3),"sunforce",'HorizontalAlignment','left','FontSize',6);            
             %vectarrow(totalforcevector(:,i,j,k))
-            axis equal;hold off;legend;axis([-1 1 -1 1 -1 1])
-            pause(0.0001)
+            axis equal;hold off;axis([-1 1 -1 1 -1 1])
+            pause(1)
         end
       %end
     %end
@@ -121,12 +99,30 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
     figure
         subplot(2,1,1)
         plot(alpha,thetaaero,alpha,phiaero);
-        legend;grid on;
+        legend('thetaaero','phiaero');grid on;
         subplot(2,1,2)
         plot(alpha,drag,alpha,lift);
-        legend;grid on;
+        legend('drag','lift');grid on;
 
 end
+function [theta phi]=thetaphi(refvec, vec)
+  theta = atan2d(norm(cross(refvec,vec)), dot(refvec,vec));
+  if theta>180
+      theta=180-theta;
+  end
+  phi=atand( (refvec(3)-vec(3)) / (refvec(2)-vec(2)) );
+end
+
+function [drag lift]=aerodraglift(theta,phi)
+  drag=-abs(sind(theta-90)); %%simplified formula
+  lift=-abs(sind(2*(theta-90)));%*sign(theta); %% simplified formula     
+end
+
+function [drag lift]=sundraglift(theta,phi)
+  drag=-abs(sind(theta-90)); %%simplified formula
+  lift=-abs(sind(2*(theta-90)));%*sign(theta); %% simplified formula     
+end
+
 
 function [alpha1,beta1,gamma1]=findBestAerodynamicAngles(totalforcevector,controlvector,alpha,beta,gamma) 
     theta=zeros(size(gamma,2),size(beta,2),size(alpha,2));
@@ -143,5 +139,3 @@ function [alpha1,beta1,gamma1]=findBestAerodynamicAngles(totalforcevector,contro
     beta1=beta(i,j,k);
     gamma1=gamma(i,j,k);
 end
-
-
