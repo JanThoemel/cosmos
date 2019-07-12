@@ -9,6 +9,7 @@ rho=2; v=1;
 wind=rho/2*v^2*[-1 0 0]';
 noxpanels=0;noypanels=1;nozpanels=0;
 controlvector=[1 0 0]';
+
 alpha=0:10:360; %% yaw
 beta=0:1:360; %% pitch 
 gamma=0:10:360; %%roll
@@ -64,24 +65,32 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
             k=1; %% yaw
             j=1; %% pitch
             %i=5;%% roll
-            Rz2=[cosd(alpha(k)) -sind(alpha(k)) 0; sind(alpha(k)) cosd(alpha(k)) 0; 0 0 1]; %% yaw
-            Ry =[cosd(beta(j))  0 sind(beta(j))  ; 0 1 0                          ; -sind(beta(j)) 0 cosd(beta(j))]; %% pitch
-            Rz =[cosd(gamma(i)) -sind(gamma(i)) 0; sind(gamma(i)) cosd(gamma(i)) 0; 0 0 1]; %%roll
+                %% for reference y panel
+                Rz2=[cosd(alpha(k)) -sind(alpha(k)) 0; sind(alpha(k)) cosd(alpha(k)) 0; 0 0 1]; %% yaw
+                Ry =[cosd(beta(j))  0 sind(beta(j))  ; 0 1 0                          ; -sind(beta(j)) 0 cosd(beta(j))]; %% pitch
+                Rz =[cosd(gamma(i)) -sind(gamma(i)) 0; sind(gamma(i)) cosd(gamma(i)) 0; 0 0 1]; %%roll
 
-            pg = [(Rz2*Ry*Rz*p1')' ; (Rz2*Ry*Rz*p2')' ; (Rz2*Ry*Rz*p3')' ; (Rz2*Ry*Rz*p4')' ; (Rz2*Ry*Rz*p1')'];
-            pg2 = [(Rz2*Ry*Rz*p12')' ; (Rz2*Ry*Rz*p22')' ; (Rz2*Ry*Rz*p32')' ; (Rz2*Ry*Rz*p42')' ; (Rz2*Ry*Rz*p12')'];
-            pg3 = [(Rz2*Ry*Rz*p13')' ; (Rz2*Ry*Rz*p23')' ; (Rz2*Ry*Rz*p33')' ; (Rz2*Ry*Rz*p43')' ; (Rz2*Ry*Rz*p13')'];
-            Ig=Rz2*Ry*Rz*Iy;
+                pg = [(Rz2*Ry*Rz*p1')' ; (Rz2*Ry*Rz*p2')' ; (Rz2*Ry*Rz*p3')' ; (Rz2*Ry*Rz*p4')' ; (Rz2*Ry*Rz*p1')'];
+                pg2 = [(Rz2*Ry*Rz*p12')' ; (Rz2*Ry*Rz*p22')' ; (Rz2*Ry*Rz*p32')' ; (Rz2*Ry*Rz*p42')' ; (Rz2*Ry*Rz*p12')'];
+                pg3 = [(Rz2*Ry*Rz*p13')' ; (Rz2*Ry*Rz*p23')' ; (Rz2*Ry*Rz*p33')' ; (Rz2*Ry*Rz*p43')' ; (Rz2*Ry*Rz*p13')'];
+                Ig=Rz2*Ry*Rz*Iy;
 
-            [thetaaero(i,j,k),phiaero(i,j,k)]=thetaphi(wind, Ig);
-            [drag(i,j,k),lift(i,j,k)]=aerodraglift(thetaaero(i,j,k),phiaero(i,j,k));
-            aeroforcevector=[drag(i,j,k)  lift(i,j,k)*cosd( atand(Ig(3)/Ig(2)) )  lift(i,j,k)*sind( atand(Ig(3)/Ig(2)) )]';
+                [thetaaero(i,j,k),phiaero(i,j,k)]=thetaphi(wind, Ig);
+                [drag(i,j,k),lift(i,j,k)]=aerodraglift(thetaaero(i,j,k),phiaero(i,j,k));
+                aeroforcevector=[drag(i,j,k)  lift(i,j,k)*cosd( atand(Ig(3)/Ig(2)) )  lift(i,j,k)*sind( atand(Ig(3)/Ig(2)) )]';
+                %aeroforcevector=[drag(i,j,k)  lift(i,j,k)*cosd( phiaero(i,j,k) )  lift(i,j,k)*sind( phiaero(i,j,k) )]';
 
-            [thetasun(i,j,k),phisun(i,j,k)]=thetaphi(sunlight,Ig);
-            [dragsun(i,j,k),liftsun(i,j,k)]=sundraglift(thetaaero(i,j,k),phisun(i,j,k));
-            sunforcevector=[0 0 0]';
+                [thetasun(i,j,k),phisun(i,j,k)]=thetaphi(sunlight,Ig);
+                [dragsun(i,j,k),liftsun(i,j,k)]=sundraglift(thetaaero(i,j,k),phisun(i,j,k));
+                if thetasun(i,j,k)<90
+                     sunforcevector=norm(sunlight)*Ig;
+                elseif thetasun(i,j,k)>=90
+                     sunforcevector=-norm(sunlight)*Ig;
+                else
+                    fprintf('error sun force vector');
+                end
 
-            totalforcevector(:,i,j,k)=aeroforcevector+sunforcevector;
+                totalforcevector(:,i,j,k)=aeroforcevector+sunforcevector;
             %% draw
             vectarrow(Ig)
             hold on; 
@@ -91,12 +100,12 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
             %vectarrow(sunlight)
             %hold on;
             %vectarrow(wind)
-            %hold on;axis equal;legend;
-            %vectarrow(aeroforcevector);
             %hold on;
-            %vectarrow(sunforcevector)
-            %hold on;
-            vectarrow(totalforcevector(:,i,j,k))
+            vectarrow(aeroforcevector);
+            hold on;
+            vectarrow(sunforcevector)
+            hold on;
+            %vectarrow(totalforcevector(:,i,j,k))
             axis equal;hold off;legend;axis([-1 1 -1 1 -1 1])
             pause(0.0001)
         end
