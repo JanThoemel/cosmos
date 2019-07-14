@@ -72,13 +72,20 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
                 pg3 = [(Rz2*Ry*Rz*pz13')' ; (Rz2*Ry*Rz*pz23')' ; (Rz2*Ry*Rz*pz33')' ; (Rz2*Ry*Rz*pz43')' ; (Rz2*Ry*Rz*pz13')'];
                 Ig=Rz2*Ry*Rz*Iz;
                 otherside=1;
-                [thetaaero(i,j,k),phiaero(i,j,k,otherside),otherside]=thetaphi(wind, Ig);
+                Ig2=Ig;
+                [thetaaero(i,j,k),phiaero(i,j,k,otherside),otherside,Ig2]=thetaphi(wind, Ig);
                 [drag(i,j,k),lift(i,j,k)]=aerodraglift(thetaaero(i,j,k),phiaero(i,j,k));
-                aeroforcevector=[drag(i,j,k)  lift(i,j,k)*cosd( phiaero(i,j,k) )*sign(-otherside*Ig(2))  lift(i,j,k) * sind( phiaero(i,j,k) )*otherside  ]';
-
-                [thetasun(i,j,k),phisun(i,j,k),otherside]=thetaphi(sunlight,Ig);
+                ax=cross(wind,Ig2)                
+                liftvector = rodrigues_rot(wind,ax,90/180*pi)
+                aeroforcevector=-wind/sqrt(wind(1)^2+wind(2)^2+wind(3)^2)*drag(i,j,k);
+                aeroforcevector=-liftvector/sqrt(wind(1)^2+wind(2)^2+wind(3)^2)*lift(i,j,k)+aeroforcevector;
+                
+                [thetasun(i,j,k),phisun(i,j,k),otherside,Ig2]=thetaphi(sunlight,Ig);
                 [dragsun(i,j,k),liftsun(i,j,k)]=sundraglift(thetasun(i,j,k),phisun(i,j,k));
-                sunforcevector=[dragsun(i,j,k)  liftsun(i,j,k)*cosd( phisun(i,j,k) )*sign(-otherside*Ig(2))* sign(Ig(1))  lift(i,j,k) * sind( phisun(i,j,k) ) * otherside ]';
+                ax=cross(sunlight,Ig2)                
+                liftvector = rodrigues_rot(sunlight,ax,90/180*pi)
+                sunforcevector=-sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2)*dragsun(i,j,k);
+                sunforcevector=-liftvector/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2)*liftsun(i,j,k)+sunforcevector;
 
 %                totalforcevector(:,i,j,k)=aeroforcevector+sunforcevector;
             %% draw
@@ -90,7 +97,7 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
             vectarrow(sunforcevector);hold on;text(sunforcevector(1),sunforcevector(2),sunforcevector(3),"sunforce",'HorizontalAlignment','left','FontSize',6);            
             %vectarrow(totalforcevector(:,i,j,k))
             axis equal;hold off;axis([-1 1 -1 1 -1 1])
-            pause(0.1)
+            pause(1)
         end
       %end
     %end
@@ -110,13 +117,15 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
         legend('drag','lift');grid on;
 
 end
-function [theta,phi,otherside]=thetaphi(refvec, vec)
+function [theta,phi,otherside,Ig2]=thetaphi(refvec, vec)
   theta = atan2d(norm(cross(refvec,vec)), dot(refvec,vec));
   if theta>90
       theta=180-theta;
       otherside=-1;
+      Ig2=-vec;
   else
       otherside=1;
+      Ig2=vec;
   end
   phi=atand( (refvec(3)-vec(3)) / (refvec(2)-vec(2)) );
 end
@@ -148,3 +157,67 @@ function [alpha1,beta1,gamma1]=findBestAerodynamicAngles(totalforcevector,contro
     beta1=beta(i,j,k);
     gamma1=gamma(i,j,k);
 end
+
+
+
+% rodrigues_rot - Rotates array of 3D vectors by an angle theta about vector k.
+% Direction is determined by the right-hand (screw) rule.
+%
+% Syntax:  v_rot = rodrigues(v,k,theta)
+%
+% Inputs:
+%    v - Array of three dimensional vectors to rotate. Array can be 
+%           composed of N rows of 3D row vectors or N columns of 3D column
+%           vectors. If v is 3x3 array, it is assumed that it is 3 rows of
+%           3 3D row vectors.
+%    k - Rotation axis (does not need to be unit vector)
+%    theta - Rotation angle in radians; positive according to right-hand
+%           (screw) rule
+%
+%   Note: k and individual 3D vectors in v array must be same orientation.
+%           
+%
+% Outputs:
+%    v_rot - Array of rotated vectors.
+%
+% Other m-files required: dot.m (built-in MATLAB)
+% Subfunctions: none
+% MAT-files required: none
+%
+% Author: Ismail Hameduddin
+%           Mechanical Engineering, Purdue University
+% email: ihameduddin@gmail.com
+% Website: http://www.ismailh.com
+% January 2011; Last revision: 2-January-2012
+%------------- BEGIN CODE --------------
+function v_rot = rodrigues_rot(v,k,theta)
+    [m,n] = size(v);
+    if (m ~= 3 && n ~= 3)
+        error('input vector is/are not three dimensional'), end
+    if (size(v) ~= size(k)) 
+        error('rotation vector v and axis k have different dimensions'),end
+    
+    k = k/sqrt(k(1)^2 + k(2)^2 + k(3)^2); % normalize rotation axis
+    No = numel(v)/3; % number of vectors in array
+    v_rot = v; % initialize rotated vector array
+    if ( n == 3 )
+        crosskv = v(1,:); % initialize cross product k and v with right dim.
+        for i = 1:No
+            crosskv(1) = k(2)*v(i,3) - k(3)*v(i,2);
+            crosskv(2) = k(3)*v(i,1) - k(1)*v(i,3); 
+            crosskv(3) = k(1)*v(i,2) - k(2)*v(i,1);
+            v_rot(i,:) = cos(theta)*v(i,:) + (crosskv)*sin(theta)...
+                            + k*(dot(k,v(i,:)))*(1 - cos(theta));
+        end
+    else % if m == 3 && n ~= 3
+        crosskv = v(:,1); % initialize cross product k and v with right dim.
+        for i = 1:No
+            crosskv(1) = k(2)*v(3,i) - k(3)*v(2,i);
+            crosskv(2) = k(3)*v(1,i) - k(1)*v(3,i); 
+            crosskv(3) = k(1)*v(2,i) - k(2)*v(1,i);
+            v_rot(:,i) = cos(theta)*v(:,i) + (crosskv)*sin(theta)...
+                            + k*(dot(k,v(:,i)))*(1 - cos(theta));
+        end
+    end
+end
+%------------- END OF CODE --------------
