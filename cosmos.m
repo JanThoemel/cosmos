@@ -22,7 +22,8 @@
 clear all;close all;clc;%format long;
 
 altitude=340000;        %% in m
-density=1e-8;
+density=1e-9;           %! requires checking
+v=7500;
 radiusOfEarth=6371000;  %% in m;
 sc=2;                   %% scale for second configuration; scales also figure
 
@@ -125,10 +126,10 @@ while currenttime<totaltime
   if UMOO==1
     for i=1:ns
         %% solve ODE      
-        [t,x]=ode23(@(t,x) hcwequation(t,x,IR,P,A,B,xd(:,i,:),currenttime,timetemp),timetemp,ssttemp(:,i,size(ssttemp,3)),opts);
+        [t,x]=ode23(@(t,x) hcwequation(t,x,IR,P,A,B,xd(:,i,:),currenttime,timetemp),timetemp,ssttemp(:,i,size(ssttemp,3)),opts,density,v);
         ssttemp(:,i,:)=x';  %% columns: statevector, rows: (x,y,z,u,v,w), depth: timeevolution   
         %% get data out of ODE
-        [a1,anglestemp(:,i,:),u]=hcwequation(t,x',IR,P,A,B,xd(:,i,:),currenttime,timetemp);
+        [a1,anglestemp(:,i,:),u]=hcwequation(t,x',IR,P,A,B,xd(:,i,:),currenttime,timetemp,density,v);
         clear hcwequation
      end
   elseif UMOO==2 %% use home made vector based solver: Euler backward
@@ -147,7 +148,7 @@ while currenttime<totaltime
             utemp(:,1,j+1)=[-1.2 0 0]';
             anglestemp(:,1,j+1)=45;
             for i=2:ns
-                [x(:,i,j+1),anglestemp(:,i,j+1),utemp(:,i,j+1)]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),x(:,i,j),e(:,i,j),flops);
+                [x(:,i,j+1),anglestemp(:,i,j+1),utemp(:,i,j+1)]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),x(:,i,j),e(:,i,j),flops,density,v);
             end 
       end
       ssttemp(:,:,:)=x;  %% columns: statevector, rows: (x,y,z,u,v,w), depth: timeevolution
@@ -187,14 +188,12 @@ plotting(angles,sst,time,ns,omega,u)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [dxdt,anglestemp,u]=hcwequation(t,x,IR,P,A,B,xdi,currenttime,timespan)
+function [dxdt,anglestemp,u]=hcwequation(t,x,IR,P,A,B,xdi,currenttime,timespan,density,v)
 %% HCW equation
   persistent ang;
   persistent timearray;
 
   satmass=2; %% kg
-  density=1e-8; %%kg/m3
-  v=7500; %% m/s
   S=0.1^2; %% m2
   k=1/satmass*density*v^2*S;
   umax=-k*1.2/satmass;
@@ -259,11 +258,9 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [x,anglestemptemp,utemptemp]=hcwequation2(IR,P,A,B,deltat,x0,e,flops)
+function [x,anglestemptemp,utemptemp]=hcwequation2(IR,P,A,B,deltat,x0,e,flops,density,v)
 %% HCW equation
   satmass=2; %% kg
-  density=1e-8; %%kg/m3
-  v=7500; %% m/s
   S=0.1^2; %% m2
   k=1/satmass*density*v^2*S;
   umax=1.19;
