@@ -78,22 +78,22 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
                     if norm(windpressure)
                         [thetaaero(i,j,k),phiaero(i,j,k),Ig2]=thetaphi(wind, Ig);
                         [aerodragcoef(i,j,k),aeroliftcoef(i,j,k)]=aerodragliftcoef(thetaaero(i,j,k),phiaero(i,j,k));
-                        aeroforcevector=-wind/sqrt(wind(1)^2+wind(2)^2+wind(3)^2)           *    aerodragcoef(i,j,k)*windpressure*panelsurface;
+                        aeroforcevectorz=-wind/sqrt(wind(1)^2+wind(2)^2+wind(3)^2)           *    aerodragcoef(i,j,k)*windpressure*panelsurface;
                         ax=cross(wind,Ig2);liftvector = rodrigues_rot(wind,ax,90/180*pi);
-                        aeroforcevector=-liftvector/sqrt(wind(1)^2+wind(2)^2+wind(3)^2)      *    aeroliftcoef(i,j,k)*windpressure*panelsurface + aeroforcevector;
-                        aeroforcevector=aeroforcevector*aeroscalingfactor;
+                        aeroforcevectorz=-liftvector/sqrt(wind(1)^2+wind(2)^2+wind(3)^2)      *    aeroliftcoef(i,j,k)*windpressure*panelsurface + aeroforcevectorz;
+                        aeroforcevectorz=aeroforcevectorz*aeroscalingfactor;
                         axis([-1.55 1.55 -1.55 1.55 -1.55 1.55]);
                     end 
                     if norm(solarpressure)
                         [thetasun(i,j,k),phisun(i,j,k),Ig2]=thetaphi(sunlight,Ig);
                         [sundragcoef(i,j,k), sunliftcoef(i,j,k) ]=sundragliftcoef(thetasun(i,j,k),phisun(i,j,k));                                                               
-                        sunforcevector=-sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2)   * sundragcoef(i,j,k)*solarpressure*panelsurface;
+                        sunforcevectorz=-sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2)   * sundragcoef(i,j,k)*solarpressure*panelsurface;
                         ax=cross(sunlight,Ig2) ;liftvector = rodrigues_rot(sunlight,ax,90/180*pi);
-                        sunforcevector=-liftvector/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2)  *sunliftcoef(i,j,k)*solarpressure*panelsurface  +  sunforcevector;
-                        sunforcevector=sunforcevector*sunscalingfactor;
+                        sunforcevectorz=-liftvector/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2)  *sunliftcoef(i,j,k)*solarpressure*panelsurface  +  sunforcevectorz;
+                        sunforcevectorz=sunforcevectorz*sunscalingfactor;
                         axis([-axislength axislength -axislength axislength -axislength axislength]);
                     end            
-                    totalforcevectorz(:,i,j,k)=nozpanels*(aeroforcevector+sunforcevector);
+                    totalforcevectorz(:,i,j,k)=nozpanels*(aeroforcevectorz+sunforcevectorz);
                     %% panel and normal
                     pg = [(Rz2*Ry*Rz*pz1')' ; (Rz2*Ry*Rz*pz2')' ; (Rz2*Ry*Rz*pz3')' ; (Rz2*Ry*Rz*pz4')' ; (Rz2*Ry*Rz*pz1')'];
                     pg2 = [(Rz2*Ry*Rz*pz12')' ; (Rz2*Ry*Rz*pz22')' ; (Rz2*Ry*Rz*pz32')' ; (Rz2*Ry*Rz*pz42')' ; (Rz2*Ry*Rz*pz12')'];
@@ -122,7 +122,7 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
                         sunforcevectorx=sunforcevectorx*sunscalingfactor;
                         axis([-axislength axislength -axislength axislength -axislength axislength]);
                     end
-                    totalforcevectorx(:,i,j,k)=noxpanels*(aeroforcevector+sunforcevector);
+                    totalforcevectorx(:,i,j,k)=noxpanels*(aeroforcevectorz+sunforcevectorz);
                     %% panel and normal
                     pgx = [(Rz2*Ry*Rz*-Ry90*pz1')' ; (Rz2*Ry*Rz*-Ry90*pz2')' ; (Rz2*Ry*Rz*-Ry90*pz3')' ; (Rz2*Ry*Rz*-Ry90*pz4')' ; (Rz2*Ry*Rz*-Ry90*pz1')'];
                     pgx2 = [(Rz2*Ry*Rz*-Ry90*pz12')' ; (Rz2*Ry*Rz*-Ry90*pz22')' ; (Rz2*Ry*Rz*-Ry90*pz32')' ; (Rz2*Ry*Rz*-Ry90*pz42')' ; (Rz2*Ry*Rz*-Ry90*pz12')'];
@@ -152,7 +152,7 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
                         sunforcevectory=sunforcevectory*sunscalingfactor;
                         axis([-axislength axislength -axislength axislength -axislength axislength]);
                     end
-                    totalforcevectory(:,i,j,k)=noypanels*(aeroforcevector+sunforcevector);
+                    totalforcevectory(:,i,j,k)=noypanels*(aeroforcevectorz+sunforcevectorz);
                     %% panel and normal
                     pgy = [(Rz2*Ry*Rz*-Rx90*pz1')' ; (Rz2*Ry*Rz*-Rx90*pz2')' ; (Rz2*Ry*Rz*-Rx90*pz3')' ; (Rz2*Ry*Rz*-Rx90*pz4')' ; (Rz2*Ry*Rz*-Rx90*pz1')'];
                     pgy2 = [(Rz2*Ry*Rz*-Rx90*pz12')' ; (Rz2*Ry*Rz*-Rx90*pz22')' ; (Rz2*Ry*Rz*-Rx90*pz32')' ; (Rz2*Ry*Rz*-Rx90*pz42')' ; (Rz2*Ry*Rz*-Rx90*pz12')'];
@@ -167,7 +167,7 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
                     windscalingfactor=1/sqrt(wind(1)^2+wind(2)^2+wind(3)^2)*windpressure*panelsurface*aeroscalingfactor;
                     vectarrow([0 0 0],wind*windscalingfactor);hold on;text(wind(1)*windscalingfactor,wind(2)*windscalingfactor,wind(3)*windscalingfactor,"wind",'HorizontalAlignment','left','FontSize',6);
                     if nozpanels
-                      vectarrow([0 0 0],aeroforcevector);hold on;text(aeroforcevector(1),aeroforcevector(2),aeroforcevector(3),"aeroforce",'HorizontalAlignment','left','FontSize',6);
+                      vectarrow([0 0 0],aeroforcevectorz);hold on;text(aeroforcevectorz(1),aeroforcevectorz(2),aeroforcevectorz(3),"aeroforce",'HorizontalAlignment','left','FontSize',6);
                     end
                     if noxpanels
                     vectarrow([0 0 0],aeroforcevectorx);hold on;text(aeroforcevectorx(1),aeroforcevectorx(2),aeroforcevectorx(3),"aeroforcex",'HorizontalAlignment','left','FontSize',6);
@@ -180,7 +180,7 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
                     sunlightscalingfactor=1/sqrt(wind(1)^2+wind(2)^2+wind(3)^2)*windpressure*panelsurface*sunscalingfactor;
                     vectarrow([0 0 0],sunlight*sunlightscalingfactor);hold on;text(sunlight(1)*sunlightscalingfactor,sunlight(2)*sunlightscalingfactor,sunlight(3)*sunlightscalingfactor,"sunlight",'HorizontalAlignment','left','FontSize',6);
                     if nozpanels
-                      vectarrow([0 0 0],sunforcevector);hold on;text(sunforcevector(1),sunforcevector(2),sunforcevector(3),"sunforce",'HorizontalAlignment','left','FontSize',6);
+                      vectarrow([0 0 0],sunforcevectorz);hold on;text(sunforcevectorz(1),sunforcevectorz(2),sunforcevectorz(3),"sunforce",'HorizontalAlignment','left','FontSize',6);
                     end
                     if noxpanels
                       vectarrow([0 0 0],sunforcevectorx);hold on;text(sunforcevectorx(1),sunforcevectorx(2),sunforcevectorx(3),"sunforcex",'HorizontalAlignment','left','FontSize',6);
