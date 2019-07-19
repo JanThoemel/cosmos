@@ -17,13 +17,15 @@ sunlight=sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2);
 panelsurface=0.01;
 aeroscalingfactor=1;
 sunscalingfactor=100;
-noypanels=1;noxpanels=1;nozpanels=1;
+nozpanels=1;
+noxpanels=0;
+noypanels=0;
 
-controlvector=[-1 -1 -1]';
+controlvector=[1 0 0]';
 
-alpha=0:15:360; %% yaw
-beta=0:15:360; %% pitch 
-gamma=0:15:360; %%roll
+alpha=0:10:360; %% yaw
+beta=0:10:360; %% pitch 
+gamma=0:10:360; %%roll
 
 
 totalforcevector = totalforcevectorfunction(wind,sunlight,noxpanels,noypanels,nozpanels,alpha,beta,gamma,panelsurface,aeroscalingfactor,solarpressure,sunscalingfactor,windpressure);
@@ -62,7 +64,9 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
     aeroliftcoef=zeros(size(gamma,2),size(beta,2),size(alpha,2));
     sundragcoef=zeros(size(gamma,2),size(beta,2),size(alpha,2));
     sunliftcoef=zeros(size(gamma,2),size(beta,2),size(alpha,2));
-
+    totalforcevectorz=zeros(3,size(gamma,2),size(beta,2),size(alpha,2));
+    totalforcevectorx=zeros(3,size(gamma,2),size(beta,2),size(alpha,2));
+    totalforcevectory=zeros(3,size(gamma,2),size(beta,2),size(alpha,2));
     for k=1:size(gamma,2) %% yaw
       for j=1:size(beta,2) %% pitch
         for i=1:size(alpha,2) %% roll
@@ -77,7 +81,7 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
                 if nozpanels %% zpanel
                     Igz=Rz2*Ry*Rz*Iz;
                     if norm(windpressure)
-                        [thetaaero(i,j,k),phiaero(i,j,k),Ig2]=thetaphi(wind, Igz);
+                        [thetaaero(i,j,k),phiaero(i,j,k),Ig2]=thetaphi1(wind, Igz);
                         [aerodragcoef(i,j,k),aeroliftcoef(i,j,k)]=aerodragliftcoef(thetaaero(i,j,k),phiaero(i,j,k));
                         aeroforcevectorz=-wind/sqrt(wind(1)^2+wind(2)^2+wind(3)^2)           *    aerodragcoef(i,j,k)*windpressure*panelsurface;
                         ax=cross(wind,Ig2);liftvector = rodrigues_rot(wind,ax,90/180*pi);
@@ -85,7 +89,7 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
                         aeroforcevectorz=aeroforcevectorz*aeroscalingfactor;
                     end 
                     if norm(solarpressure)
-                        [thetasun(i,j,k),phisun(i,j,k),Ig2]=thetaphi(sunlight,Igz);
+                        [thetasun(i,j,k),phisun(i,j,k),Ig2]=thetaphi1(sunlight,Igz);
                         [sundragcoef(i,j,k), sunliftcoef(i,j,k) ]=sundragliftcoef(thetasun(i,j,k),phisun(i,j,k));                                                               
                         sunforcevectorz=-sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2)   * sundragcoef(i,j,k)*solarpressure*panelsurface;
                         ax=cross(sunlight,Ig2) ;liftvector = rodrigues_rot(sunlight,ax,90/180*pi);
@@ -102,7 +106,7 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
                 if noxpanels %% xpanel
                     Igx=Rz2*Ry*Rz*Ix;
                     if norm(windpressure)
-                        [thetaaero(i,j,k),phiaero(i,j,k),Igx2]=thetaphi(wind, Igx);
+                        [thetaaero(i,j,k),phiaero(i,j,k),Igx2]=thetaphi1(wind, Igx);
                         [aerodragcoef(i,j,k),aeroliftcoef(i,j,k)]=aerodragliftcoef(thetaaero(i,j,k),phiaero(i,j,k));
                         aeroforcevectorx=-wind/sqrt(wind(1)^2+wind(2)^2+wind(3)^2)                         *  aerodragcoef(i,j,k)*windpressure*panelsurface;
                         ax=cross(wind,Igx2);liftvector = rodrigues_rot(wind,ax,90/180*pi);
@@ -110,14 +114,14 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
                         aeroforcevectorx=aeroforcevectorx*aeroscalingfactor;
                     end
                     if norm(solarpressure)
-                        [thetasun(i,j,k),phisun(i,j,k),Igx2]=thetaphi(sunlight,Igx);
+                        [thetasun(i,j,k),phisun(i,j,k),Igx2]=thetaphi1(sunlight,Igx);
                         [sundragcoef(i,j,k),sunliftcoef(i,j,k)]=sundragliftcoef(thetasun(i,j,k),phisun(i,j,k));
                         sunforcevectorx=-sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2)           *  sundragcoef(i,j,k)*solarpressure*panelsurface;
                         ax=cross(sunlight,Igx2); liftvector = rodrigues_rot(sunlight,ax,90/180*pi);
                         sunforcevectorx=-liftvector/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2)         *  sunliftcoef(i,j,k)*solarpressure*panelsurface  +  sunforcevectorx;
                         sunforcevectorx=sunforcevectorx*sunscalingfactor;
                     end
-                    totalforcevectorx(:,i,j,k)=noxpanels*(aeroforcevectorz+sunforcevectorz);
+                    totalforcevectorx(:,i,j,k)=noxpanels*(aeroforcevectorx+sunforcevectorx);
                     %% panel and normal
                     pgx = [(Rz2*Ry*Rz*-Ry90*pz1')' ; (Rz2*Ry*Rz*-Ry90*pz2')' ; (Rz2*Ry*Rz*-Ry90*pz3')' ; (Rz2*Ry*Rz*-Ry90*pz4')' ; (Rz2*Ry*Rz*-Ry90*pz1')'];
                     pgx2 = [(Rz2*Ry*Rz*-Ry90*pz12')' ; (Rz2*Ry*Rz*-Ry90*pz22')' ; (Rz2*Ry*Rz*-Ry90*pz32')' ; (Rz2*Ry*Rz*-Ry90*pz42')' ; (Rz2*Ry*Rz*-Ry90*pz12')'];
@@ -128,7 +132,7 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
                 if noypanels %% ypanel
                     Igy=Rz2*Ry*Rz*Iy;
                     if norm(windpressure)
-                        [thetaaero(i,j,k),phiaero(i,j,k),Igy2]=thetaphi(wind, Igy);
+                        [thetaaero(i,j,k),phiaero(i,j,k),Igy2]=thetaphi1(wind, Igy);
                         [aerodragcoef(i,j,k),aeroliftcoef(i,j,k)]=aerodragliftcoef(thetaaero(i,j,k),phiaero(i,j,k));             
                         aeroforcevectory=-wind/sqrt(wind(1)^2+wind(2)^2+wind(3)^2)        *  aerodragcoef(i,j,k)*windpressure*panelsurface;
                         ax=cross(wind,Igy2) ;liftvector = rodrigues_rot(wind,ax,90/180*pi);
@@ -136,7 +140,7 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
                         aeroforcevectory=aeroforcevectory*aeroscalingfactor;
                     end
                     if norm(solarpressure)
-                        [thetasun(i,j,k),phisun(i,j,k),Igy2]=thetaphi(sunlight,Igy);
+                        [thetasun(i,j,k),phisun(i,j,k),Igy2]=thetaphi1(sunlight,Igy);
                         [sundragcoef(i,j,k),sunliftcoef(i,j,k)]=sundragliftcoef(thetasun(i,j,k),phisun(i,j,k));                                       
                         sunforcevectory=-sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2)     *   sundragcoef(i,j,k)*solarpressure*panelsurface;
                         ax=cross(sunlight,Igy2); liftvector = rodrigues_rot(sunlight,ax,90/180*pi);
@@ -204,11 +208,12 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
                   pause(1/rotspeed);
                 end
                 totalforcevector(:,i,j,k)=totalforcevectorz(:,i,j,k)+totalforcevectorx(:,i,j,k)+totalforcevectory(:,i,j,k);
+                %fprintf('\n---');
                 if i*j*k==1
-                  fprintf('bbbbbbbbbbbbbbbbbbb');
+                  fprintf('\nbbbbbbbbbbbbbbbbbbbb');
                 end
-                fprintf('\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b');
-                fprintf('progress: %2.1e %%',i*j*k/(size(alpha,2)*size(beta,2)*size(gamma,2)));
+                fprintf('\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b');
+                fprintf('\nprogress: %2.1e %%',(i+(j-1)*size(beta,2)+(k-1)*size(gamma,2)*size(beta,2))    /(size(alpha,2)*size(beta,2)*size(gamma,2))*100);
         end
       end
     end
@@ -229,16 +234,19 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
 
 end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [theta,phi,Ig2]=thetaphi(refvec, vec)
+function [theta,phi,Ig2]=thetaphi1(refvec, vec)
   theta = atan2d(norm(cross(refvec,vec)), dot(refvec,vec));
   if theta>90
       theta=180-theta;
-      otherside=-1;
       Ig2=-vec;
   else
-      otherside=1;
       Ig2=vec;
   end
+  phi=atand( (refvec(3)-vec(3)) / (refvec(2)-vec(2)) );
+end
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function [theta,phi]=thetaphi2(refvec, vec)
+  theta = atan2d(norm(cross(refvec,vec)), dot(refvec,vec));
   phi=atand( (refvec(3)-vec(3)) / (refvec(2)-vec(2)) );
 end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -259,7 +267,7 @@ function [alpha1,beta1,gamma1]=findBestAerodynamicAngles(totalforcevector,contro
     for k=1:size(gamma,2) %% yaw
       for j=1:size(beta,2) %% pitch
         for i=1:size(alpha,2) %% roll
-            [theta(i,j,k),phi(i,j,k)]=thetaphi(totalforcevector(:,i,j,k),controlvector);
+            [theta(i,j,k),phi(i,j,k)]=thetaphi2(totalforcevector(:,i,j,k),controlvector);
             if theta(i,j,k)<mintheta
               mintheta=theta(i,j,k);
               mini=i;minj=j;mink=k;
