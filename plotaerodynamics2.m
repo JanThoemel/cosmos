@@ -1,51 +1,56 @@
 %plotaerodynamics
 close all;clc;clear all;
+
+%% some set-up
 deltaangle=15;
 alpha=0:deltaangle:360; %% yaw
 beta =0:deltaangle:360; %% pitch 
 gamma=0:deltaangle:360; %% roll
-
-
+aeroscalingfactor=1;
+sunscalingfactor=10;
 oldpath = path; path(oldpath,'..\matlabfunctions\')
+
+%% orbital environment
 altitude =340000; %% in m
-
 [rho,v]=orbitalproperties(altitude);
-
 windpressure=rho/2*v^2;%% pascal
 wind=[-1 0 0]' ;
 wind=wind/sqrt(wind(1)^2+wind(2)^2+wind(3)^2);
-
 solarpressure=0;%2*4.5e-6; %% pascal
 sunlight=[1 1 1]'; 
 sunlight=sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2);
 
+%% the space craft
 panelsurface=0.01; %m^2
-aeroscalingfactor=1;
-sunscalingfactor=10;
 nozpanels=1;
 noxpanels=0;
 noypanels=0;
-if nozpanels>9 or noxpanels>9 or noypanels>9
+if nozpanels>9 || noxpanels>9 || noypanels>9
   fprintf('\n error: too many panels');
+  input('error');
 end
+
+%% the desired control vector
 controlvector=[-1 0.1 0]';
 
+%% the possible forcevectors
 filename=strcat('tfv_panels',int2str(nozpanels),int2str(noxpanels),int2str(noypanels),'_wind',num2str(solarpressure,'%1.1e'),int2str(wind(1)),int2str(wind(2)),int2str(wind(3)),'_sun',num2str(windpressure,'%1.1e'),int2str(sunlight(1)),int2str(sunlight(2)),int2str(sunlight(3)),'.mat');
 
 if isfile(filename)
   fprintf('\nloading file');
   load(filename,'totalforcevector')
+  fprintf('\ndone');
 else
   fprintf('\n computing forces');
   totalforcevector = totalforcevectorfunction(wind,sunlight,noxpanels,noypanels,nozpanels,alpha,beta,gamma,panelsurface,aeroscalingfactor,solarpressure,sunscalingfactor,windpressure);
+  fprintf('\ndone');
   save(filename,'totalforcevector')
 end
 
+%% the chosen force vector
 [alphaopt,betaopt,gammaopt]=findBestAerodynamicAngles(totalforcevector,controlvector,alpha,beta,gamma);
 
-alphaopt
-betaopt
-gammaopt
+fprintf('\n alpha %f beta %f gamma %f \n',alphaopt,betaopt,gammaopt);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -300,8 +305,8 @@ function [alpha1,beta1,gamma1]=findBestAerodynamicAngles(totalforcevector,contro
     end
     %[theta(i,j,k),phi]=thetaphi(totalforcevector(:,i,j,k),controlvector);
     %! find indizes of smallest theta    
-    size(goodthetai)
-    mintheta
+    %size(goodthetai)
+    %mintheta
     alpha1=alpha(mini);
     beta1=beta(minj);
     gamma1=gamma(mink);
