@@ -2,9 +2,9 @@
 close all;clc;clear all;
 
 %% some set-up
-deltaangle=5;
+deltaangle=10;
 alpha=0:deltaangle:360; %% yaw
-beta =0:deltaangle:360; %% pitch 
+beta =0:deltaangle:180; %% pitch 
 gamma=0:deltaangle:360; %% roll
 aeroscalingfactor=1;
 sunscalingfactor=10;
@@ -247,7 +247,7 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
 
     figure
         subplot(2,1,1)
-        plot(alpha,thetaaero,alpha,phiaero);
+        plot(beta,thetaaero,beta,phiaero);
         legend('thetaaero','phiaero');grid on;
         subplot(2,1,2)
         plot(alpha,aerodragcoef,alpha,aeroliftcoef);
