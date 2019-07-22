@@ -1,6 +1,6 @@
 %plotaerodynamics
 close all;clc;clear all;
-deltaangle=5;
+deltaangle=15;
 alpha=0:deltaangle:360; %% yaw
 beta =0:deltaangle:360; %% pitch 
 gamma=0:deltaangle:360; %% roll
@@ -25,10 +25,21 @@ sunscalingfactor=10;
 nozpanels=1;
 noxpanels=0;
 noypanels=0;
+if nozpanels>9 or noxpanels>9 or noypanels>9
+  fprintf('\n error: too many panels');
+end
+controlvector=[-1 0.1 0]';
 
-controlvector=[-1 0 0]';
+filename=strcat('tfv_panels',int2str(nozpanels),int2str(noxpanels),int2str(noypanels),'_wind',num2str(solarpressure,'%1.1e'),int2str(wind(1)),int2str(wind(2)),int2str(wind(3)),'_sun',num2str(windpressure,'%1.1e'),int2str(sunlight(1)),int2str(sunlight(2)),int2str(sunlight(3)),'.mat');
 
-totalforcevector = totalforcevectorfunction(wind,sunlight,noxpanels,noypanels,nozpanels,alpha,beta,gamma,panelsurface,aeroscalingfactor,solarpressure,sunscalingfactor,windpressure);
+if isfile(filename)
+  fprintf('\nloading file');
+  load(filename,'totalforcevector')
+else
+  fprintf('\n computing forces');
+  totalforcevector = totalforcevectorfunction(wind,sunlight,noxpanels,noypanels,nozpanels,alpha,beta,gamma,panelsurface,aeroscalingfactor,solarpressure,sunscalingfactor,windpressure);
+  save(filename,'totalforcevector')
+end
 
 [alphaopt,betaopt,gammaopt]=findBestAerodynamicAngles(totalforcevector,controlvector,alpha,beta,gamma);
 
@@ -269,11 +280,17 @@ end
 function [alpha1,beta1,gamma1]=findBestAerodynamicAngles(totalforcevector,controlvector,alpha,beta,gamma) 
     theta=zeros(size(gamma,2),size(beta,2),size(alpha,2));
     phi=zeros(size(gamma,2),size(beta,2),size(alpha,2));
-    mintheta=360;mini=0;minj=0;mink=0;
+    mintheta=360;mini=0;minj=0;mink=0;l=1;
     for k=1:size(gamma,2) %% yaw
       for j=1:size(beta,2) %% pitch
         for i=1:size(alpha,2) %% roll
             [theta(i,j,k),phi(i,j,k)]=thetaphi2(totalforcevector(:,i,j,k),controlvector);
+            if theta(i,j,k)<10
+              goodthetai(l)=i;
+              goodthetaj(l)=j;
+              goodthetak(l)=k;
+              l=l+1;
+            end
             if theta(i,j,k)<mintheta
               mintheta=theta(i,j,k);
               mini=i;minj=j;mink=k;
@@ -283,7 +300,7 @@ function [alpha1,beta1,gamma1]=findBestAerodynamicAngles(totalforcevector,contro
     end
     %[theta(i,j,k),phi]=thetaphi(totalforcevector(:,i,j,k),controlvector);
     %! find indizes of smallest theta    
-
+    size(goodthetai)
     mintheta
     alpha1=alpha(mini);
     beta1=beta(minj);
@@ -293,6 +310,9 @@ function [alpha1,beta1,gamma1]=findBestAerodynamicAngles(totalforcevector,contro
         histogram(theta)
       subplot(2,1,2)
         histogram(phi)
-
+figure
+  for n=1:l-1
+    vectarrow([0 0 0],totalforcevector(:,squeeze(goodthetai(n)),squeeze(goodthetaj(n)),squeeze(goodthetak(n))));hold on;
+  end
 end
 
