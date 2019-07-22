@@ -2,7 +2,7 @@
 close all;clc;clear all;
 
 %% some set-up
-deltaangle=15;
+deltaangle=5;
 alpha=0:deltaangle:360; %% yaw
 beta =0:deltaangle:360; %% pitch 
 gamma=0:deltaangle:360; %% roll
@@ -34,7 +34,7 @@ end
 controlvector=[-1 0.1 0]';
 
 %% the possible forcevectors
-filename=strcat('tfv_panels',int2str(nozpanels),int2str(noxpanels),int2str(noypanels),'_wind',num2str(solarpressure,'%1.1e'),int2str(wind(1)),int2str(wind(2)),int2str(wind(3)),'_sun',num2str(windpressure,'%1.1e'),int2str(sunlight(1)),int2str(sunlight(2)),int2str(sunlight(3)),'.mat');
+filename=strcat('tfv_panels',int2str(nozpanels),int2str(noxpanels),int2str(noypanels),'_wind',num2str(solarpressure,'%1.1e'),int2str(wind(1)),int2str(wind(2)),int2str(wind(3)),'_sun',num2str(windpressure,'%1.1e'),int2str(sunlight(1)),int2str(sunlight(2)),int2str(sunlight(3)),'_deltaangle',int2str(deltaangle),'.mat');
 
 if isfile(filename)
   fprintf('\nloading file');
@@ -50,7 +50,7 @@ end
 %% the chosen force vector
 [alphaopt,betaopt,gammaopt]=findBestAerodynamicAngles(totalforcevector,controlvector,alpha,beta,gamma);
 
-fprintf('\n alpha %f beta %f gamma %f \n',alphaopt,betaopt,gammaopt);
+fprintf('\n alpha %3.1f beta %3.1f gamma %3.1f \n',alphaopt,betaopt,gammaopt);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
