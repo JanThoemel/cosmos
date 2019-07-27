@@ -268,82 +268,89 @@ function [x,anglestemptemp,utemptemp]=hcwequation2(IR,P,A,B,deltat,x0,e,flops,de
   eta=0.1;    
   eps=0.1;
 
+  old=1;
   %% control vector
   u1(:)=-IR*B'*P*e(:);
   flops=flops+1e6;
-  
-  unondim=u1/k;%+umax/2;%-[umax/2 0 0]'; %% to set u to a default value and size u correctly
-  flops=flops+3;
-  
-  %plot([0:5:180],-2*eps*(sind([0:5:180])).^3+eta*(eps-1)*(sind([0:5:180])).^2+(eps-1)*sind([0:5:180]))
-  %syms theta;
-  %eqn = -1==-2*eps*(sind(theta)).^3+eta*(eps-1)*(sind(theta)).^2+(eps-1)*sind(theta);
-  %solx = vpa(solve(eqn,theta))
-   
-  %{
-  theta2=0:5:90;
-  for i=1:size(theta2,2)
-      p(i)=-2*eps*(sind(theta2(i)))^3+eta*(eps-1)*(sind(theta2(i)))^2+(eps-1)*sind(theta2(i));
-      g(i)=-cosd(theta2(i))*sind(theta2(i))*(eta-eps*eta+2*eps*sind(theta2(i)));
-      p2(i)=-1.2*sind(theta2(i));
-      g2(i)=-0.12*sind(2*theta2(i));
-  end
-  plot(theta2,p,theta2,g,theta2,p2,theta2,g2)
-  %}
-  
-  
-  %phi1=acos(unondim(2)/sqrt(unondim(2)^2+unondim(3)^2));
-  %phi2=asin(unondim(3)/sqrt(unondim(2)^2+unondim(3)^2));
-  %input('a')
- %{ 
-    if unondim(1)>=1/2*umax; %% going forward with drag
-      unondim(1)=1/2*umax;
-      unondim(2)=0;
-      unondim(3)=1/2*umax*100;
-    elseif unon(1)<=-1/2*umax %% going backward 
-      unondim(1)=-1/2*umax;
-      unondim(2)=0;
-      unondim(3)=0;
-    %elseif sqrt(u(2,i)^2+u(3,i)^2)>uyzmax
-      %  u(1,i)=-0.8;
-      %  u(2,i)=u1(2,i)/uyzmax;
-      %  u(3,i)=u1(3,i)/uyzmax;
-    else 
-      print('error')
+
+  if old
+    unondim=u1/k;%+umax/2;%-[umax/2 0 0]'; %% to set u to a default value and size u correctly
+    flops=flops+3;
+
+    %plot([0:5:180],-2*eps*(sind([0:5:180])).^3+eta*(eps-1)*(sind([0:5:180])).^2+(eps-1)*sind([0:5:180]))
+    %syms theta;
+    %eqn = -1==-2*eps*(sind(theta)).^3+eta*(eps-1)*(sind(theta)).^2+(eps-1)*sind(theta);
+    %solx = vpa(solve(eqn,theta))
+
+    %{
+    theta2=0:5:90;
+    for i=1:size(theta2,2)
+        p(i)=-2*eps*(sind(theta2(i)))^3+eta*(eps-1)*(sind(theta2(i)))^2+(eps-1)*sind(theta2(i));
+        g(i)=-cosd(theta2(i))*sind(theta2(i))*(eta-eps*eta+2*eps*sind(theta2(i)));
+        p2(i)=-1.2*sind(theta2(i));
+        g2(i)=-0.12*sind(2*theta2(i));
     end
-  
-  if unondim(1)<0
-    u1temp=-unondim(1);
+    plot(theta2,p,theta2,g,theta2,p2,theta2,g2)
+    %}
+
+
+    %phi1=acos(unondim(2)/sqrt(unondim(2)^2+unondim(3)^2));
+    %phi2=asin(unondim(3)/sqrt(unondim(2)^2+unondim(3)^2));
+    %input('a')
+   %{ 
+      if unondim(1)>=1/2*umax; %% going forward with drag
+        unondim(1)=1/2*umax;
+        unondim(2)=0;
+        unondim(3)=1/2*umax*100;
+      elseif unon(1)<=-1/2*umax %% going backward 
+        unondim(1)=-1/2*umax;
+        unondim(2)=0;
+        unondim(3)=0;
+      %elseif sqrt(u(2,i)^2+u(3,i)^2)>uyzmax
+        %  u(1,i)=-0.8;
+        %  u(2,i)=u1(2,i)/uyzmax;
+        %  u(3,i)=u1(3,i)/uyzmax;
+      else 
+        print('error')
+      end
+
+    if unondim(1)<0
+      u1temp=-unondim(1);
+    else
+      u1temp=unondim(1);
+    end
+    %}
+
+    %p2(i)=-1.2*sind(theta2(i));
+    %g2(i)=-0.12*sind(2*theta2(i));
+
+    if unondim(1)>umax/2
+        unondim(1)=umax/2;
+        unondim(2)=0;
+        unondim(3)=0;
+    elseif unondim(1)<-umax/2
+        unondim(1)=-umax/2;
+        unondim(2)=0;
+        unondim(3)=0;
+    end
+    anglestemptemp(1)=asind(-1/1.2*(unondim(1)-1/2*umax));
+    anglestemptemp(2)=0;
+    anglestemptemp(3)=0;
+    %anglestemptemp(1) = asind( unondim(3)./sqrt( unondim(1)^2 + unondim(3)^2));%pitch
+    %anglestemptemp(2) = asind( unondim(2)./sqrt( unondim(1)^2 + unondim(2)^2));%yaw
+    %anglestemptemp(3) =0;% asind( u(3)./sqrt( u(2)^2 + u(3)^2));%roll
+    flops=flops+1e6;
+
+    %e'
+    %u
+    %anglestemptemp
+    udim=unondim*k;
+    utemptemp=unondim;
   else
-    u1temp=unondim(1);
+    ;
+  
   end
-  %}
   
-  %p2(i)=-1.2*sind(theta2(i));
-  %g2(i)=-0.12*sind(2*theta2(i));
-  
-  if unondim(1)>umax/2
-      unondim(1)=umax/2;
-      unondim(2)=0;
-      unondim(3)=0;
-  elseif unondim(1)<-umax/2
-      unondim(1)=-umax/2;
-      unondim(2)=0;
-      unondim(3)=0;
-  end
-  anglestemptemp(1)=asind(-1/1.2*(unondim(1)-1/2*umax));
-  anglestemptemp(2)=0;
-  anglestemptemp(3)=0;
-  %anglestemptemp(1) = asind( unondim(3)./sqrt( unondim(1)^2 + unondim(3)^2));%pitch
-  %anglestemptemp(2) = asind( unondim(2)./sqrt( unondim(1)^2 + unondim(2)^2));%yaw
-  %anglestemptemp(3) =0;% asind( u(3)./sqrt( u(2)^2 + u(3)^2));%roll
-  flops=flops+1e6;
-  
-  %e'
-  %u
-  %anglestemptemp
-  udim=unondim*k;
-  utemptemp=unondim;
   x(:)=(A*x0(:)+B*udim(:))*deltat+x0(:);
   flops=flops+1e6; 
 end
