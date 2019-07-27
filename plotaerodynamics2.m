@@ -30,12 +30,13 @@ if nozpanels>9 || noxpanels>9 || noypanels>9
   input('error');
 end
 
-%% the desired control vector
-controlvector=[-1 0.1 0]';
+%% the control vector
+controlvector=[-1 0.6 0]';
 
-%% the possible forcevectors
+%% %% the possible forcevectors
+%% define filename convenction
 filename=strcat('tfv_panels',int2str(nozpanels),int2str(noxpanels),int2str(noypanels),'_wind',num2str(solarpressure,'%1.1e'),int2str(wind(1)),int2str(wind(2)),int2str(wind(3)),'_sun',num2str(windpressure,'%1.1e'),int2str(sunlight(1)),int2str(sunlight(2)),int2str(sunlight(3)),'_deltaangle',int2str(deltaangle),'.mat');
-
+%% does this file exists already
 if isfile(filename)
   fprintf('\nloading file');
   load(filename,'totalforcevector')
@@ -47,8 +48,9 @@ else
   save(filename,'totalforcevector')
 end
 
-%% the chosen force vector
-[alphaopt,betaopt,gammaopt]=findBestAerodynamicAngles(totalforcevector,controlvector,alpha,beta,gamma);
+%% find the good force vector
+oldalphaopt=0;oldbetaopt=90;oldgammaopt=320;
+[alphaopt,betaopt,gammaopt]=findBestAerodynamicAngles(totalforcevector,controlvector,alpha,beta,gamma,oldalphaopt,oldbetaopt,oldgammaopt);
 
 fprintf('\n alpha %3.1f beta %3.1f gamma %3.1f \n',alphaopt,betaopt,gammaopt);
 
@@ -96,12 +98,12 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
             %j=3; %% pitch
             %i=1;%% roll
                 %% rotation matrizes
-                Rz2=[cosd(alpha(k)) -sind(alpha(k)) 0; sind(alpha(k)) cosd(alpha(k)) 0; 0 0 1]; %% yaw
+                RzY =[cosd(gamma(i)) -sind(gamma(i)) 0; sind(gamma(i)) cosd(gamma(i)) 0; 0 0 1]; %%roll
                 Ry =[cosd(beta(j))  0 sind(beta(j))  ; 0 1 0                          ; -sind(beta(j)) 0 cosd(beta(j))]; %% pitch
-                Rz =[cosd(gamma(i)) -sind(gamma(i)) 0; sind(gamma(i)) cosd(gamma(i)) 0; 0 0 1]; %%roll
+                RzR=[cosd(alpha(k)) -sind(alpha(k)) 0; sind(alpha(k)) cosd(alpha(k)) 0; 0 0 1]; %% yaw
                 
                 if nozpanels %% zpanel
-                    Igz=Rz2*Ry*Rz*Iz;
+                    Igz=RzY*Ry*RzR*Iz;
                     if norm(windpressure)
                         [thetaaero(i,j,k),phiaero(i,j,k),Ig2]=thetaphi1(wind, Igz);
                         [aerodragcoef(i,j,k),aeroliftcoef(i,j,k)]=aerodragliftcoef(thetaaero(i,j,k),phiaero(i,j,k));
@@ -120,13 +122,13 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
                     end            
                     totalforcevectorz(:,i,j,k)=nozpanels*(aeroforcevectorz+sunforcevectorz);
                     %% panel and normal
-                    pg = [(Rz2*Ry*Rz*pz1')' ; (Rz2*Ry*Rz*pz2')' ; (Rz2*Ry*Rz*pz3')' ; (Rz2*Ry*Rz*pz4')' ; (Rz2*Ry*Rz*pz1')'];
-                    pg2 = [(Rz2*Ry*Rz*pz12')' ; (Rz2*Ry*Rz*pz22')' ; (Rz2*Ry*Rz*pz32')' ; (Rz2*Ry*Rz*pz42')' ; (Rz2*Ry*Rz*pz12')'];
-                    pg3 = [(Rz2*Ry*Rz*pz13')' ; (Rz2*Ry*Rz*pz23')' ; (Rz2*Ry*Rz*pz33')' ; (Rz2*Ry*Rz*pz43')' ; (Rz2*Ry*Rz*pz13')'];
+                    pg = [(RzY*Ry*RzR*pz1')' ; (RzY*Ry*RzR*pz2')' ; (RzY*Ry*RzR*pz3')' ; (RzY*Ry*RzR*pz4')' ; (RzY*Ry*RzR*pz1')'];
+                    pg2 = [(RzY*Ry*RzR*pz12')' ; (RzY*Ry*RzR*pz22')' ; (RzY*Ry*RzR*pz32')' ; (RzY*Ry*RzR*pz42')' ; (RzY*Ry*RzR*pz12')'];
+                    pg3 = [(RzY*Ry*RzR*pz13')' ; (RzY*Ry*RzR*pz23')' ; (RzY*Ry*RzR*pz33')' ; (RzY*Ry*RzR*pz43')' ; (RzY*Ry*RzR*pz13')'];
                     %vectarrow([0 0 0],totalforcevectorz(:,i,j,k));hold on;
                 end
                 if noxpanels %% xpanel
-                    Igx=Rz2*Ry*Rz*Ix;
+                    Igx=RzY*Ry*RzR*Ix;
                     if norm(windpressure)
                         [thetaaero(i,j,k),phiaero(i,j,k),Igx2]=thetaphi1(wind, Igx);
                         [aerodragcoef(i,j,k),aeroliftcoef(i,j,k)]=aerodragliftcoef(thetaaero(i,j,k),phiaero(i,j,k));
@@ -145,14 +147,14 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
                     end
                     totalforcevectorx(:,i,j,k)=noxpanels*(aeroforcevectorx+sunforcevectorx);
                     %% panel and normal
-                    pgx = [(Rz2*Ry*Rz*-Ry90*pz1')' ; (Rz2*Ry*Rz*-Ry90*pz2')' ; (Rz2*Ry*Rz*-Ry90*pz3')' ; (Rz2*Ry*Rz*-Ry90*pz4')' ; (Rz2*Ry*Rz*-Ry90*pz1')'];
-                    pgx2 = [(Rz2*Ry*Rz*-Ry90*pz12')' ; (Rz2*Ry*Rz*-Ry90*pz22')' ; (Rz2*Ry*Rz*-Ry90*pz32')' ; (Rz2*Ry*Rz*-Ry90*pz42')' ; (Rz2*Ry*Rz*-Ry90*pz12')'];
-                    pgx3 = [(Rz2*Ry*Rz*-Ry90*pz13')' ; (Rz2*Ry*Rz*-Ry90*pz23')' ; (Rz2*Ry*Rz*-Ry90*pz33')' ; (Rz2*Ry*Rz*-Ry90*pz43')' ; (Rz2*Ry*Rz*-Ry90*pz13')'];
+                    pgx = [(RzY*Ry*RzY*-Ry90*pz1')' ; (RzY*Ry*RzR*-Ry90*pz2')' ; (RzY*Ry*RzR*-Ry90*pz3')' ; (RzY*Ry*RzR*-Ry90*pz4')' ; (RzY*Ry*RzR*-Ry90*pz1')'];
+                    pgx2 = [(RzY*Ry*RzR*-Ry90*pz12')' ; (RzY*Ry*RzR*-Ry90*pz22')' ; (RzY*Ry*RzR*-Ry90*pz32')' ; (RzY*Ry*RzR*-Ry90*pz42')' ; (RzY*Ry*RzR*-Ry90*pz12')'];
+                    pgx3 = [(RzY*Ry*RzR*-Ry90*pz13')' ; (RzY*Ry*RzR*-Ry90*pz23')' ; (RzY*Ry*RzR*-Ry90*pz33')' ; (RzY*Ry*RzR*-Ry90*pz43')' ; (RzY*Ry*RzR*-Ry90*pz13')'];
                  
                     %vectarrow([0 0 0],totalforcevector(:,i,j,k)); hold on;
                 end
                 if noypanels %% ypanel
-                    Igy=Rz2*Ry*Rz*Iy;
+                    Igy=RzY*Ry*RzR*Iy;
                     if norm(windpressure)
                         [thetaaero(i,j,k),phiaero(i,j,k),Igy2]=thetaphi1(wind, Igy);
                         [aerodragcoef(i,j,k),aeroliftcoef(i,j,k)]=aerodragliftcoef(thetaaero(i,j,k),phiaero(i,j,k));             
@@ -171,9 +173,9 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
                     end
                     totalforcevectory(:,i,j,k)=noypanels*(aeroforcevectory+sunforcevectory);
                     %% panel and normal
-                    pgy = [(Rz2*Ry*Rz*-Rx90*pz1')' ; (Rz2*Ry*Rz*-Rx90*pz2')' ; (Rz2*Ry*Rz*-Rx90*pz3')' ; (Rz2*Ry*Rz*-Rx90*pz4')' ; (Rz2*Ry*Rz*-Rx90*pz1')'];
-                    pgy2 = [(Rz2*Ry*Rz*-Rx90*pz12')' ; (Rz2*Ry*Rz*-Rx90*pz22')' ; (Rz2*Ry*Rz*-Rx90*pz32')' ; (Rz2*Ry*Rz*-Rx90*pz42')' ; (Rz2*Ry*Rz*-Rx90*pz12')'];
-                    pgy3 = [(Rz2*Ry*Rz*-Rx90*pz13')' ; (Rz2*Ry*Rz*-Rx90*pz23')' ; (Rz2*Ry*Rz*-Rx90*pz33')' ; (Rz2*Ry*Rz*-Rx90*pz43')' ; (Rz2*Ry*Rz*-Rx90*pz13')'];
+                    pgy = [(RzY*Ry*RzR*-Rx90*pz1')' ; (RzY*Ry*RzR*-Rx90*pz2')' ; (RzY*Ry*RzR*-Rx90*pz3')' ; (RzY*Ry*RzR*-Rx90*pz4')' ; (RzY*Ry*RzY*-Rx90*pz1')'];
+                    pgy2 = [(RzY*Ry*RzR*-Rx90*pz12')' ; (RzY*Ry*RzR*-Rx90*pz22')' ; (RzY*Ry*RzR*-Rx90*pz32')' ; (RzY*Ry*RzR*-Rx90*pz42')' ; (RzY*Ry*RzR*-Rx90*pz12')'];
+                    pgy3 = [(RzY*Ry*RzR*-Rx90*pz13')' ; (RzY*Ry*RzR*-Rx90*pz23')' ; (RzY*Ry*RzR*-Rx90*pz33')' ; (RzY*Ry*RzR*-Rx90*pz43')' ; (RzY*Ry*RzR*-Rx90*pz13')'];
                     %vectarrow([0 0 0],totalforcevector(:,i,j,k));hold on;                  
                 end
                 %%draw
@@ -282,42 +284,59 @@ function [drag,lift]=sundragliftcoef(theta,phi)
   lift=-abs(sind(2*(theta-90)));%% simplified formula     
 end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [alpha1,beta1,gamma1]=findBestAerodynamicAngles(totalforcevector,controlvector,alpha,beta,gamma) 
+function [alpha1,beta1,gamma1]=findBestAerodynamicAngles(totalforcevector,controlvector,alpha,beta,gamma,oldalphaopt,oldbetaopt,oldgammaopt) 
+    thetarange=10;
     theta=zeros(size(gamma,2),size(beta,2),size(alpha,2));
     phi=zeros(size(gamma,2),size(beta,2),size(alpha,2));
-    mintheta=360;mini=0;minj=0;mink=0;l=1;
+    l=1;
     for k=1:size(gamma,2) %% yaw
       for j=1:size(beta,2) %% pitch
         for i=1:size(alpha,2) %% roll
             [theta(i,j,k),phi(i,j,k)]=thetaphi2(totalforcevector(:,i,j,k),controlvector);
-            if theta(i,j,k)<10
+            if theta(i,j,k)<thetarange %% find all force vectors that have theta<thetarange deg
               goodthetai(l)=i;
               goodthetaj(l)=j;
               goodthetak(l)=k;
+              goodalpha(l)=alpha(i);
+              goodbeta(l)=beta(j);
+              goodgamma(l)=gamma(k);
+              %! some weighting factors are needed
+              meritfactor(l)=1000/(  (1+abs(theta(i,j,k)))  *    (1+wrapTo360(oldalphaopt-alpha(i)))  *(1+wrapTo360(oldbetaopt-beta(j))) * (1+wrapTo360(oldgammaopt-gamma(k))) );
               l=l+1;
-            end
-            if theta(i,j,k)<mintheta
-              mintheta=theta(i,j,k);
-              mini=i;minj=j;mink=k;
             end
         end
       end
     end
-    %[theta(i,j,k),phi]=thetaphi(totalforcevector(:,i,j,k),controlvector);
-    %! find indizes of smallest theta    
-    %size(goodthetai)
-    %mintheta
-    alpha1=alpha(mini);
-    beta1=beta(minj);
-    gamma1=gamma(mink);
+    figure
+      histogram(meritfactor)
+    figure
+      plot(meritfactor)
+    [~,optindex]=max(meritfactor);
+    alpha1=goodalpha(optindex);
+    beta1=goodbeta(optindex);
+    gamma1=goodgamma(optindex);
     figure
       subplot(2,1,1)
         histogram(theta)
       subplot(2,1,2)
         histogram(phi)
-figure
-  for n=1:l-1
-    vectarrow([0 0 0],totalforcevector(:,squeeze(goodthetai(n)),squeeze(goodthetaj(n)),squeeze(goodthetak(n))));hold on;
-  end
+    figure
+      for n=1:l-1
+        vectarrow([0 0 0],totalforcevector(:,squeeze(goodthetai(n)),squeeze(goodthetaj(n)),squeeze(goodthetak(n))));
+        hold on;axis equal;
+      end
+      hold off;
+    Iz=[0 0 1]';
+    figure
+      for n=1:l-1
+        RzY =[cosd(goodgamma(n)) -sind(goodgamma(n)) 0; sind(goodgamma(n)) cosd(goodgamma(n)) 0; 0 0 1]; %%roll
+        Ry =[cosd(goodbeta(n))  0 sind(goodbeta(n))  ; 0 1 0                          ; -sind(goodbeta(n)) 0 cosd(goodbeta(n))]; %% pitch
+        RzR=[cosd(goodalpha(n)) -sind(goodalpha(n)) 0; sind(goodalpha(n)) cosd(goodalpha(n)) 0; 0 0 1]; %% yaw
+        Ig=RzY*Ry*RzR*Iz;
+        vectarrow([0 0 0],Ig);
+        hold on;axis equal;
+      end
+    hold off;
+    
 end
 
