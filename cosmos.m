@@ -22,7 +22,9 @@
 clear all;close all;clc;%format long;
 
 altitude=340000;        %% in m
-density=1e-9;           %! requires checking
+[rho,v]=orbitalproperties(altitude);
+density=1e-9;           %! requires checking, shall be rho
+
 v=7500;
 radiusOfEarth=6371000;  %% in m;
 sc=2;                   %% scale for second configuration; scales also figure
@@ -148,7 +150,7 @@ while currenttime<totaltime
             utemp(:,1,j+1)=[-1.2 0 0]';
             anglestemp(:,1,j+1)=45;
             for i=2:ns
-                [x(:,i,j+1),anglestemp(:,i,j+1),utemp(:,i,j+1)]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),x(:,i,j),e(:,i,j),flops,density,v);
+                [x(:,i,j+1),anglestemp(:,i,j+1),utemp(:,i,j+1)]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),x(:,i,j),e(:,i,j),flops,density,rho,v);
             end 
       end
       ssttemp(:,:,:)=x;  %% columns: statevector, rows: (x,y,z,u,v,w), depth: timeevolution
@@ -258,7 +260,7 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [x,anglestemptemp,utemptemp]=hcwequation2(IR,P,A,B,deltat,x0,e,flops,density,v)
+function [x,anglestemptemp,utemptemp]=hcwequation2(IR,P,A,B,deltat,x0,e,flops,density,rho,v)
 %% HCW equation
   satmass=2; %% kg
   S=0.1^2; %% m2
@@ -268,7 +270,9 @@ function [x,anglestemptemp,utemptemp]=hcwequation2(IR,P,A,B,deltat,x0,e,flops,de
   eta=0.1;    
   eps=0.1;
 
-  old=1;
+  old=0;
+
+  
   %% control vector
   u1(:)=-IR*B'*P*e(:);
   flops=flops+1e6;
@@ -347,8 +351,43 @@ function [x,anglestemptemp,utemptemp]=hcwequation2(IR,P,A,B,deltat,x0,e,flops,de
     udim=unondim*k;
     utemptemp=unondim;
   else
-    ;
-  
+    %implement this!
+    %% some set-up
+    deltaangle=10;
+    alpha=0:deltaangle:360; %% yaw
+    beta =0:deltaangle:180; %% pitch 
+    gamma=0:deltaangle:360; %% roll
+    aeroscalingfactor=1;
+    sunscalingfactor=10;
+    oldpath = path; path(oldpath,'..\matlabfunctions\')
+
+    %% orbital environment
+    %altitude =340000; %% in m
+    %[rho,v]=orbitalproperties(altitude);
+    windpressure=rho/2*v^2;%% pascal
+    wind=[-1 0 0]' ;
+    wind=wind/sqrt(wind(1)^2+wind(2)^2+wind(3)^2);
+    solarpressure=0;%2*4.5e-6; %% pascal
+    sunlight=[1 1 1]'; 
+    sunlight=sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2);
+
+    %% the space craft
+    panelsurface=0.01; %m^2
+    nozpanels=1;
+    noxpanels=0;
+    noypanels=0;
+    if nozpanels>9 || noxpanels>9 || noypanels>9
+      fprintf('\n error: too many panels');
+      input('error');
+    end
+    %% the control vector
+    controlvector=u1;%[-1 0.6 0]';
+    totalforcevector = totalforcevectorfunction(wind,sunlight,noxpanels,noypanels,nozpanels,alpha,beta,gamma,panelsurface,aeroscalingfactor,solarpressure,sunscalingfactor,windpressure, deltaangle);
+    oldalphaopt=0;oldbetaopt=90;oldgammaopt=320;
+    [forcevector,alphaopt,betaopt,gammaopt]=findBestAerodynamicAngles(totalforcevector,controlvector,alpha,beta,gamma,oldalphaopt,oldbetaopt,oldgammaopt);
+    udim=forcevector;
+    anglestemptemp=[alphaopt betaopt gammaopt]';
+    utemptemp=udim;
   end
   
   x(:)=(A*x0(:)+B*udim(:))*deltat+x0(:);

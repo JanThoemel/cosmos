@@ -38,8 +38,7 @@ totalforcevector = totalforcevectorfunction(wind,sunlight,noxpanels,noypanels,no
 
 %% find the good force vector
 oldalphaopt=0;oldbetaopt=90;oldgammaopt=320;
-[alphaopt,betaopt,gammaopt]=findBestAerodynamicAngles(totalforcevector,controlvector,alpha,beta,gamma,oldalphaopt,oldbetaopt,oldgammaopt);
-
+[forcevector,alphaopt,betaopt,gammaopt]=findBestAerodynamicAngles(totalforcevector,controlvector,alpha,beta,gamma,oldalphaopt,oldbetaopt,oldgammaopt);
 
 %% the result
 fprintf('\n alpha %3.1f beta %3.1f gamma %3.1f \n',alphaopt,betaopt,gammaopt);
