@@ -20,17 +20,17 @@
 %% compute moment coefficients and moments
 
 clear all;close all;clc;%format long;
+oldpath = path; path(oldpath,'..\matlabfunctions\')
 
 altitude=340000;        %% in m
 [rho,v]=orbitalproperties(altitude);
-density=1e-9;           %! requires checking, shall be rho
+density=rho;%1e-7;           %! requires checking, shall be rho
 
-v=7500;
 radiusOfEarth=6371000;  %% in m;
 sc=2;                   %% scale for second configuration; scales also figure
 
 %%satelliteshapeproperties, number of 10cmx10cm faces to x,y,z(body coordinates, normally aligned with):
-faces=[1 0 0];
+panels=[0 0 1]; 
 modelfilename=strcat('figures',filesep,'cocu.dae');
 
 mu=3.986004418E14;      %% in m3?s?2
@@ -41,17 +41,17 @@ omega=sqrt(mu/r0^3);
 ns=2;                   %% number of satellites
 
 %% scaling factor
-C3=100;               %% size of formation
-C4=1000;               %% deployment
+C3=1;               %% size of formation
+C4=1;               %% deployment
 
 %% timespan to simulate
-totaltime=20*2*pi/omega ;    %% in s
+totaltime=4*2*pi/omega ;    %% in s
 startsecondphase=120*2*pi/omega;     %% in s
 currenttime=0;          %% now, should usually be 0
 
 time=[0];
-comp_step=6;            %% computational step size
-lengthcontrolloop=180;
+comp_step=60;            %% computational step size in s
+lengthcontrolloop=300;  %% in s
 timetemp=0:comp_step:lengthcontrolloop; %% duration and interpolation timestep for each control loop. ODE45 chooses its one optimal timestep. 150s total duration is consistent with Ivanov
 fprintf('\n number of float variables for each control loop: %d, size %f kbyte',size(timetemp,2)*(1+6+6+3)+6+1,(size(timetemp,2)*(1+6+6+3)+6+1)*4/1024); %% size of time vector, state vector, desired state vector and anglevector, C and omega of analytical solution
 
@@ -64,12 +64,16 @@ fprintf('\n duration of movie without US %f min\n',totaltime/accelerationfactor/
 %% initial conditions of ODE
 sst=zeros(6,ns);        %% columns: statevector per each satellite
 ssttemp=zeros(6,ns,size(timetemp,2));
-angles=zeros(3,ns);
+angles=zeros(3,ns); %alpha (roll), beta (pitch), gamma (pitch)
 u=zeros(3,ns);%% control vector
 anglestemp=zeros(3,ns,size(timetemp,2));
 utemp=zeros(3,ns,size(timetemp,2));
+ejectionvelocity=0.5; % m/s
+timebetweenejections=10; % in s
 for i=1:ns
     ssttemp(:,i,end)=0;
+    ssttemp(1,i,end)=(i-1)*ejectionvelocity*timebetweenejections;
+    ssttemp(4,i,end)=0;%ejectionvelocity;
     %ssttemp(:,i,end)=CCCC*[(i-1)*5 0 0 0 0 0]';
     %ssttemp(:,i,end)=C4*[(i-1)*5 0 0 0.015 0.015 0.015]';
     %ssttemp(:,i,end)=C4*[(i-1)*5 0 0 0.00015 0.00015 0.00015]';
@@ -82,8 +86,8 @@ sst(:,:)=ssttemp(:,:,end);
 %% solving the ODE for each control step
 
 %% desired statevector I
-AAA=500;
-DDD=500;
+AAA=100;
+DDD=115;
 xd=zeros(6,ns,size(timetemp,2)); %% columns: desired statevector per each satellite
 
 %% use 1 Matlab ODE, 2 home made, or 3 home made non vector based
@@ -91,6 +95,29 @@ UMOO=2;
 
 %% parameters for ODE45
 opts = odeset('RelTol',1e-2,'AbsTol',1e-4);
+
+%% for forcevector determination
+  deltaangle=45;
+  alpha=0:deltaangle:360; %% yaw
+  beta =0:deltaangle:180; %% pitch 
+  gamma=0:deltaangle:360; %% roll
+  aeroscalingfactor=1;
+  sunscalingfactor=10;
+
+  %% orbital environment
+  %altitude =340000; %% in m
+  %[rho,v]=orbitalproperties(altitude);
+  windpressure=rho/2*v^2;%% pascal
+  wind=[-1 0 0]' ;
+  wind=wind/sqrt(wind(1)^2+wind(2)^2+wind(3)^2);
+  solarpressure=0;%2*4.5e-6; %% pascal
+  sunlight=[1 1 1]'; 
+  sunlight=sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2);
+
+  %% the space craft
+  panelsurface=0.01; %m^2
+
+  totalforcevector = totalforcevectorfunction(wind,sunlight,panels(1),panels(2),panels(3),alpha,beta,gamma,panelsurface,aeroscalingfactor,solarpressure,sunscalingfactor,windpressure, deltaangle);
 
 tic
 while currenttime<totaltime    
@@ -135,30 +162,33 @@ while currenttime<totaltime
         clear hcwequation
      end
   elseif UMOO==2 %% use home made vector based solver: Euler backward
-      x(:,:,1)=ssttemp(:,:,end);
-      %% apply disturbances
-      %x(:,:,1)=x(:,:,1)*1.01
-      flops=0;
-      for j=1:size(timetemp,2)-1
-            for i=1:ns
-                e(:,i,j)=x(:,i,j)-xd(:,i,j);
-                flops=flops+6;
-            end
-            %% modify error vector with some averages according to Ivanov
-            x(:,1,j+1)=[0 0 0 0 0 0]';
-            anglestemp(:,1,j+1)=[45 0 0];
-            utemp(:,1,j+1)=[-1.2 0 0]';
-            anglestemp(:,1,j+1)=45;
-            for i=2:ns
-                [x(:,i,j+1),anglestemp(:,i,j+1),utemp(:,i,j+1)]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),x(:,i,j),e(:,i,j),flops,density,rho,v);
-            end 
+    %% set initial condition (for statevector) for new ODE solver loop
+    x(:,:,1)=ssttemp(:,:,end);
+    %% apply disturbances
+    %x(:,:,1)=x(:,:,1)*1.01
+    flops=0;
+    for j=1:size(timetemp,2)-1 %% for each timestep within ODE solver loop
+      for i=1:ns
+        %% compute error
+        e(:,i,j)=x(:,i,j)-xd(:,i,j);
+        flops=flops+6;
       end
-      ssttemp(:,:,:)=x;  %% columns: statevector, rows: (x,y,z,u,v,w), depth: timeevolution
+      %% modify error vector with some averages according to Ivanov
+      %x(:,1,j+1)=[0 0 0 0 0 0]';
+      %anglestemp(:,1,j+1)=[45 0 0];
+      %utemp(:,1,j+1)=[-1.2 0 0]';
+      %anglestemp(:,1,j+1)=45;
+      for i=2:ns %% for each satellite but not the master satellite
+          [x(:,i,j+1),anglestemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),x(:,i,j),e(:,i,j),flops,density,rho,v,alpha,beta,gamma,totalforcevector,anglestemp(1,i,j),anglestemp(2,i,j),anglestemp(3,i,j));
+      end 
+    end
+    ssttemp(:,:,:)=x;  %% columns: statevector, rows: (x,y,z,u,v,w) for each satellite, depth: timeevolution
   elseif UMOO==3 %% use home made loop based solver
     ;
   else
     fprintf('error in choosing ODE solver');
   end
+  fprintf('\n');
   %% append data of last control loop to global data vector
   sst=cat(3,sst,ssttemp(:,:,2:end));  
   angles=cat(3,angles,anglestemp(:,:,2:end));  
@@ -167,14 +197,14 @@ while currenttime<totaltime
   %ttime=[ttime ; currenttime+t(2:end)];  
   %% print progress of iterations to screen
   %fprintf('\n flops %d',flops);
-  if currenttime>0
-    fprintf('\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b')
-  end
+ % if currenttime>0
+ %   fprintf('\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b')
+ % end
   currenttime=time(end);
-  fprintf('time %2.1e / totaltime %2.1e, progress %2.1e %%', currenttime, totaltime,currenttime/totaltime*100);
+ % fprintf('time %2.1e / totaltime %2.1e, progress %2.1e %%', currenttime, totaltime,currenttime/totaltime*100);
 end
 toc
-for i=1:ns
+for i=1:ns %% reset angles for first timestep for better visualization %! this could be done for several timesteps as some kind of waiting period before control kicks in
     angles(:,i,1)=[0 0 0]';
 end
 %% map on globe and create kml file
@@ -190,90 +220,21 @@ plotting(angles,sst,time,ns,omega,u)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [dxdt,anglestemp,u]=hcwequation(t,x,IR,P,A,B,xdi,currenttime,timespan,density,v)
+function [xtemptemp,anglestemptemp,utemptemp,flops]=hcwequation2(IR,P,A,B,deltat,x0,e,flops,density,rho,v,alpha,beta,gamma,totalforcevector,oldalphaopt,oldbetaopt,oldgammaopt)
 %% HCW equation
-  persistent ang;
-  persistent timearray;
-
-  satmass=2; %% kg
-  S=0.1^2; %% m2
-  k=1/satmass*density*v^2*S;
-  umax=-k*1.2/satmass;
-  uyzmax=k*0.24/satmass;
-  xdi2x = interp1(currenttime+timespan,squeeze(xdi(1,1,:)),currenttime+t);% Interpolate the data set (ft,f) at time t
-  xdi2y = interp1(currenttime+timespan,squeeze(xdi(2,1,:)),currenttime+t); % Interpolate the data set (ft,f) at time t
-  xdi2z = interp1(currenttime+timespan,squeeze(xdi(3,1,:)),currenttime+t); % Interpolate the data set (ft,f) at time t
-  xdi2=[xdi2x xdi2y xdi2z zeros(size(xdi2x,1),1) zeros(size(xdi2x,1),1) zeros(size(xdi2x,1),1)]';
-  %% error vector
-  e=x-xdi2;
-  %% control vector
-  u1=-IR*B'*P*e;
   
-  u=u1;%-[umax/2 0 0]'; %% to set u to a default value and size u correctly
-  %{
-  for i=1:size(u,2)
-    if u(1,i)>=1/2*umax; %% going forward with drag
-      u(1,i)=1/2*umax;
-      u(2,i)=0;
-      u(3,i)=1/2*umax*100;
-    elseif u(1,i)<=-1/2*umax %% going backward 
-      u(1,i)=-1/2*umax;
-      u(2,i)=0;
-      u(3,i)=0;
-    %elseif sqrt(u(2,i)^2+u(3,i)^2)>uyzmax
-      %  u(1,i)=-0.8;
-      %  u(2,i)=u1(2,i)/uyzmax;
-      %  u(3,i)=u1(3,i)/uyzmax;
-    else 
-      print('error')
-    end
-  end
-%}  
-%anglestempX(1,:)=asind(1/1.2*u(1,:)/k)+asind(1/1.2*umax/k);
-  %anglestempX(2,:)=0;
-  %anglestempX(3,:)=0;
-  for i=1:size(u,2)
-      if u(1,i)<0
-        u1temp=-u(1,i);
-      else
-          u1temp=u(1,i);
-      end
-      anglestemptemp(1,i) = asind( u(3,i)./sqrt( u(1,i)^2 + u(3,i)^2));%pitch
-      anglestemptemp(2,i) = asind( u(2,i)./sqrt( u(1,i)^2 + u(2,i)^2));%yaw
-      anglestemptemp(3,i) = asind( u(3,i)./sqrt( u(2,i)^2 + u(3,i)^2));%roll
-      %fprintf('\n u1temp %f umax %f',u1temp,umax);
-  end
-  %% getting angles
-  if size(ang,1)>0 && size(x,2)==1 %% TBC: enter only when solving ODE but not first time
-    ang=[ang  anglestemptemp];
-  elseif size(ang,1)==0 && size(x,2)==1%% TBC: enter only when solving ODE,first time
-    ang=anglestemptemp;
-  elseif size(ang,1)>0 && size(x,2)>1%% TBC: enter when getting all angles  
-    ang=anglestemptemp;
-  else
-    fprintf('\n error with getting the angles')
-  end
-  anglestemp=ang;
-  dxdt=A*x+B*u;
-end
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [x,anglestemptemp,utemptemp]=hcwequation2(IR,P,A,B,deltat,x0,e,flops,density,rho,v)
-%% HCW equation
   satmass=2; %% kg
   S=0.1^2; %% m2
   k=1/satmass*density*v^2*S;
+  
   umax=1.19;
   uyzmax=0.19;
   eta=0.1;    
   eps=0.1;
 
   old=0;
-
   
-  %% control vector
+  %% compute control vector
   u1(:)=-IR*B'*P*e(:);
   flops=flops+1e6;
 
@@ -351,46 +312,19 @@ function [x,anglestemptemp,utemptemp]=hcwequation2(IR,P,A,B,deltat,x0,e,flops,de
     udim=unondim*k;
     utemptemp=unondim;
   else
-    %implement this!
-    %% some set-up
-    deltaangle=10;
-    alpha=0:deltaangle:360; %% yaw
-    beta =0:deltaangle:180; %% pitch 
-    gamma=0:deltaangle:360; %% roll
-    aeroscalingfactor=1;
-    sunscalingfactor=10;
-    oldpath = path; path(oldpath,'..\matlabfunctions\')
-
-    %% orbital environment
-    %altitude =340000; %% in m
-    %[rho,v]=orbitalproperties(altitude);
-    windpressure=rho/2*v^2;%% pascal
-    wind=[-1 0 0]' ;
-    wind=wind/sqrt(wind(1)^2+wind(2)^2+wind(3)^2);
-    solarpressure=0;%2*4.5e-6; %% pascal
-    sunlight=[1 1 1]'; 
-    sunlight=sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2);
-
-    %% the space craft
-    panelsurface=0.01; %m^2
-    nozpanels=1;
-    noxpanels=0;
-    noypanels=0;
-    if nozpanels>9 || noxpanels>9 || noypanels>9
-      fprintf('\n error: too many panels');
-      input('error');
-    end
     %% the control vector
-    controlvector=u1;%[-1 0.6 0]';
-    totalforcevector = totalforcevectorfunction(wind,sunlight,noxpanels,noypanels,nozpanels,alpha,beta,gamma,panelsurface,aeroscalingfactor,solarpressure,sunscalingfactor,windpressure, deltaangle);
-    oldalphaopt=0;oldbetaopt=90;oldgammaopt=320;
+    controlvector=u1;
     [forcevector,alphaopt,betaopt,gammaopt]=findBestAerodynamicAngles(totalforcevector,controlvector,alpha,beta,gamma,oldalphaopt,oldbetaopt,oldgammaopt);
+    magfv=sqrt(forcevector(1)^2+forcevector(2)^2+forcevector(3)^2);
+    magcv=sqrt(controlvector(1)^2+controlvector(2)^2+controlvector(3)^2);
+    fprintf('\n magcv%+1.0e magfv%+1.0e cvx%+f cvy%+f cvz%+f fvx%+f fvy%+f fvz%+f  ao%+3.0f bo%+3.0f go%+3.0f',magcv,magfv,controlvector(1)/magcv,controlvector(2)/magcv,controlvector(3)/magcv,forcevector(1)/magfv,forcevector(2)/magfv,forcevector(3)/magfv,alphaopt,betaopt,gammaopt);
     udim=forcevector;
     anglestemptemp=[alphaopt betaopt gammaopt]';
-    utemptemp=udim;
+    utemptemp=udim; %% this is to be checked
   end
   
-  x(:)=(A*x0(:)+B*udim(:))*deltat+x0(:);
+  %% solve ODE with backward Euler step
+  xtemptemp(:)=(A*x0(:)+B*udim(:))*deltat+x0(:);
   flops=flops+1e6; 
 end
 
@@ -987,53 +921,52 @@ end
 
 function plotting(angles,sst,ttime,ns,omega,u)
     figure
-       subplot(3,3,1)%% pitch
+       subplot(3,3,1)%% roll
          for i=1:ns
-%           plot(squeeze(ttime/3600),squeeze(angles(1,i,:)));hold on
            plot(squeeze(ttime/2/pi*omega),squeeze(angles(1,i,:)));hold on
            names(i)=[{strcat('sat',int2str(i))}];
          end
-        ylabel('pitch angle [deg]');xlabel('time [h]');legend(names);grid on;hold off
-        subplot(3,3,2)%%yaw
+        ylabel('roll angle [deg]');xlabel('no. of orbits');grid on;hold off;legend(names);
+        subplot(3,3,2)%% pitch
         for i=1:ns
-           plot(squeeze(ttime/3600),squeeze(angles(2,i,:)));hold on
+           plot(squeeze(ttime/2/pi*omega),squeeze(angles(2,i,:)));hold on
         end
-        ylabel('yaw angle [deg]');xlabel('time [h]');grid on;hold off
-        subplot(3,3,3)%%roll
+        ylabel('pitch angle [deg]');xlabel('no. of orbits');grid on;hold off;
+        subplot(3,3,3)%%yaw
         for i=1:ns
-           plot(squeeze(ttime/3600),squeeze(angles(3,i,:)));hold on
+           plot(squeeze(ttime/2/pi*omega),squeeze(angles(3,i,:)));hold on
         end
-        ylabel('roll angle [deg]');xlabel('time [h]');grid on;hold off
+        ylabel('yaw angle [deg]');xlabel('no. of orbits');grid on;hold off
         subplot(3,3,4)%%x
         for i=1:ns
-           plot(squeeze(ttime/3600),squeeze(sst(1,i,:)));hold on
+           plot(squeeze(ttime/2/pi*omega),squeeze(sst(1,i,:)));hold on
         end
-        ylabel('x [m]');xlabel('time [h]');grid on;hold off
+        ylabel('x [m]');xlabel('no. of orbits');grid on;hold off
         subplot(3,3,5)%%y
         for i=1:ns
-           plot(squeeze(ttime/3600),squeeze(sst(2,i,:)));hold on
+           plot(squeeze(ttime/2/pi*omega),squeeze(sst(2,i,:)));hold on
         end
-        ylabel('y [m]');xlabel('time [h]');grid on;hold off
+        ylabel('y [m]');xlabel('no. of orbits');grid on;hold off
         subplot(3,3,6)%%z
         for i=1:ns
-           plot(squeeze(ttime/3600),squeeze(sst(3,i,:)));hold on
+           plot(squeeze(ttime/2/pi*omega),squeeze(sst(3,i,:)));hold on
         end
-        ylabel('z [m]');xlabel('time [h]');grid on;hold off
+        ylabel('z [m]');xlabel('no. of orbits');grid on;hold off
         subplot(3,3,7)%%u1
         for i=1:ns
-           plot(squeeze(ttime/3600),squeeze(u(1,i,:)));hold on
+           plot(squeeze(ttime/2/pi*omega),squeeze(u(1,i,:)));hold on
         end
-        ylabel('u1');xlabel('time [h]');grid on;hold off
+        ylabel('u1');xlabel('no. of orbits');grid on;hold off
         subplot(3,3,8)%%u2
         for i=1:ns
-           plot(squeeze(ttime/3600),squeeze(u(2,i,:)));hold on
+           plot(squeeze(ttime/2/pi*omega),squeeze(u(2,i,:)));hold on
         end
-        ylabel('u2');xlabel('time [h]');grid on;hold off
+        ylabel('u2');xlabel('no. of orbits');grid on;hold off
         subplot(3,3,9)%%u3
         for i=1:ns
-           plot(squeeze(ttime/3600),squeeze(u(3,i,:)));hold on
+           plot(squeeze(ttime/2/pi*omega),squeeze(u(3,i,:)));hold on
         end
-        ylabel('u3');xlabel('time [h]');grid on;hold off
+        ylabel('u3');xlabel('no. of orbits');grid on;hold off
         
     figure
         for i=1:ns
@@ -1052,4 +985,69 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function [dxdt,anglestemp,u]=hcwequation(t,x,IR,P,A,B,xdi,currenttime,timespan,density,v)
+%% HCW equation
+  persistent ang;
+  persistent timearray;
 
+  satmass=2; %% kg
+  S=0.1^2; %% m2
+  k=1/satmass*density*v^2*S;
+  umax=-k*1.2/satmass;
+  uyzmax=k*0.24/satmass;
+  xdi2x = interp1(currenttime+timespan,squeeze(xdi(1,1,:)),currenttime+t);% Interpolate the data set (ft,f) at time t
+  xdi2y = interp1(currenttime+timespan,squeeze(xdi(2,1,:)),currenttime+t); % Interpolate the data set (ft,f) at time t
+  xdi2z = interp1(currenttime+timespan,squeeze(xdi(3,1,:)),currenttime+t); % Interpolate the data set (ft,f) at time t
+  xdi2=[xdi2x xdi2y xdi2z zeros(size(xdi2x,1),1) zeros(size(xdi2x,1),1) zeros(size(xdi2x,1),1)]';
+  %% error vector
+  e=x-xdi2;
+  %% control vector
+  u1=-IR*B'*P*e;
+  
+  u=u1;%-[umax/2 0 0]'; %% to set u to a default value and size u correctly
+  %{
+  for i=1:size(u,2)
+    if u(1,i)>=1/2*umax; %% going forward with drag
+      u(1,i)=1/2*umax;
+      u(2,i)=0;
+      u(3,i)=1/2*umax*100;
+    elseif u(1,i)<=-1/2*umax %% going backward 
+      u(1,i)=-1/2*umax;
+      u(2,i)=0;
+      u(3,i)=0;
+    %elseif sqrt(u(2,i)^2+u(3,i)^2)>uyzmax
+      %  u(1,i)=-0.8;
+      %  u(2,i)=u1(2,i)/uyzmax;
+      %  u(3,i)=u1(3,i)/uyzmax;
+    else 
+      print('error')
+    end
+  end
+%}  
+%anglestempX(1,:)=asind(1/1.2*u(1,:)/k)+asind(1/1.2*umax/k);
+  %anglestempX(2,:)=0;
+  %anglestempX(3,:)=0;
+  for i=1:size(u,2)
+      if u(1,i)<0
+        u1temp=-u(1,i);
+      else
+          u1temp=u(1,i);
+      end
+      anglestemptemp(1,i) = asind( u(3,i)./sqrt( u(1,i)^2 + u(3,i)^2));%pitch
+      anglestemptemp(2,i) = asind( u(2,i)./sqrt( u(1,i)^2 + u(2,i)^2));%yaw
+      anglestemptemp(3,i) = asind( u(3,i)./sqrt( u(2,i)^2 + u(3,i)^2));%roll
+      %fprintf('\n u1temp %f umax %f',u1temp,umax);
+  end
+  %% getting angles
+  if size(ang,1)>0 && size(x,2)==1 %% TBC: enter only when solving ODE but not first time
+    ang=[ang  anglestemptemp];
+  elseif size(ang,1)==0 && size(x,2)==1%% TBC: enter only when solving ODE,first time
+    ang=anglestemptemp;
+  elseif size(ang,1)>0 && size(x,2)>1%% TBC: enter when getting all angles  
+    ang=anglestemptemp;
+  else
+    fprintf('\n error with getting the angles')
+  end
+  anglestemp=ang;
+  dxdt=A*x+B*u;
+end
