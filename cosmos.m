@@ -21,10 +21,15 @@
 
 clear all;close all;clc;%format long;
 oldpath = path; path(oldpath,'..\matlabfunctions\')
+%% scaling factor
+C=100;               %% 
 
 altitude=340000;        %% in m
 [rho,v]=orbitalproperties(altitude);
 density=rho;%1e-7;           %! requires checking, shall be rho
+
+rho=rho*C;
+density=density*C;
 
 radiusOfEarth=6371000;  %% in m;
 sc=2;                   %% scale for second configuration; scales also figure
@@ -40,13 +45,10 @@ omega=sqrt(mu/r0^3);
 
 ns=2;                   %% number of satellites
 
-%% scaling factor
-C3=1;               %% size of formation
-C4=1;               %% deployment
 
 %% timespan to simulate
-totaltime=4*2*pi/omega ;    %% in s
-startsecondphase=120*2*pi/omega;     %% in s
+totaltime=8*2*pi/omega ;    %% in s
+startsecondphase=4*2*pi/omega;     %% in s
 currenttime=0;          %% now, should usually be 0
 
 time=[0];
@@ -72,7 +74,7 @@ ejectionvelocity=0.5; % m/s
 timebetweenejections=10; % in s
 for i=1:ns
     ssttemp(:,i,end)=0;
-    ssttemp(1,i,end)=(i-1)*ejectionvelocity*timebetweenejections;
+    ssttemp(1,i,end)=C*(i-1)*ejectionvelocity*timebetweenejections;
     ssttemp(4,i,end)=0;%ejectionvelocity;
     %ssttemp(:,i,end)=CCCC*[(i-1)*5 0 0 0 0 0]';
     %ssttemp(:,i,end)=C4*[(i-1)*5 0 0 0.015 0.015 0.015]';
@@ -97,7 +99,7 @@ UMOO=2;
 opts = odeset('RelTol',1e-2,'AbsTol',1e-4);
 
 %% for forcevector determination
-  deltaangle=45;
+  deltaangle=15;
   alpha=0:deltaangle:360; %% yaw
   beta =0:deltaangle:180; %% pitch 
   gamma=0:deltaangle:360; %% roll
@@ -124,7 +126,7 @@ while currenttime<totaltime
   if currenttime<startsecondphase    %% initial desired vector
     %% desired statevector II
 
-    xd(1,2,:)=C3*DDD;
+    xd(1,2,:)=C*DDD;
 
     %xd(1,1,:)=-C3*DDD;
     %%xd(2,2,:)=C3*AAA*sqrt(3)*sin(omega*(currenttime+tspan));
@@ -140,9 +142,12 @@ while currenttime<totaltime
     %xd(3,4,:)=CCC*AAA*sin(omega*(currenttime+tspan));
   else                      %% switch to new desired statevector
     %% desired statevector II
-    xd(1,1,:)=-sc*C3*DDD;
-    xd(2,2,:)=sc*C3*AAA*sqrt(3)*sin(omega*(currenttime+timetemp));
-    xd(1,3,:)=sc*C3*DDD;
+
+    xd(1,2,:)=sc*C*DDD;
+    
+    %xd(1,1,:)=-sc*C3*DDD;
+    %xd(2,2,:)=sc*C3*AAA*sqrt(3)*sin(omega*(currenttime+timetemp));
+    %xd(1,3,:)=sc*C3*DDD;
     
     %xd(1,3,:)=sc*C3*2*AAA*cos(omega*(currenttime+tspan)-acos(-3/3));
     %xd(2,3,:)=sc*C3*AAA*sqrt(3)*sin(omega*(currenttime+tspan));
@@ -197,20 +202,28 @@ while currenttime<totaltime
   %ttime=[ttime ; currenttime+t(2:end)];  
   %% print progress of iterations to screen
   %fprintf('\n flops %d',flops);
- % if currenttime>0
- %   fprintf('\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b')
- % end
+  if currenttime>0
+    fprintf('\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b')
+  end
   currenttime=time(end);
- % fprintf('time %2.1e / totaltime %2.1e, progress %2.1e %%', currenttime, totaltime,currenttime/totaltime*100);
+  fprintf('time %2.1e / totaltime %2.1e, progress %2.1e %%', currenttime, totaltime,currenttime/totaltime*100);
 end
 toc
 for i=1:ns %% reset angles for first timestep for better visualization %! this could be done for several timesteps as some kind of waiting period before control kicks in
     angles(:,i,1)=[0 0 0]';
 end
-%% map on globe and create kml file
 plotting(angles,sst,time,ns,omega,u)
 
-%visualization(ns,time,squeeze(sst(1,:,:)),squeeze(sst(2,:,:)),squeeze(sst(3,:,:)),altitude,angles, modelfilename,radiusOfEarth,mu,vis_step,accelerationfactor)
+%% convert from classical ZYZ Euler angles to Google Earth Euler angles ZYX
+anglesGE=zeros(size(angles));
+for j=1:size(angles,3)
+  for i=2:ns
+    rotm = eul2rotm(angles(:,i,j)'/180*pi,'ZYZ');
+    anglesGE(:,i,j)=rotm2eul(rotm,'ZYX')'/pi*180;
+  end
+end
+%% map on globe and create kml file
+visualization(ns,time,squeeze(sst(1,:,:)),squeeze(sst(2,:,:)),squeeze(sst(3,:,:)),altitude,anglesGE, modelfilename,radiusOfEarth,mu,vis_step,accelerationfactor)
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -315,9 +328,9 @@ function [xtemptemp,anglestemptemp,utemptemp,flops]=hcwequation2(IR,P,A,B,deltat
     %% the control vector
     controlvector=u1;
     [forcevector,alphaopt,betaopt,gammaopt]=findBestAerodynamicAngles(totalforcevector,controlvector,alpha,beta,gamma,oldalphaopt,oldbetaopt,oldgammaopt);
-    magfv=sqrt(forcevector(1)^2+forcevector(2)^2+forcevector(3)^2);
-    magcv=sqrt(controlvector(1)^2+controlvector(2)^2+controlvector(3)^2);
-    fprintf('\n magcv%+1.0e magfv%+1.0e cvx%+f cvy%+f cvz%+f fvx%+f fvy%+f fvz%+f  ao%+3.0f bo%+3.0f go%+3.0f',magcv,magfv,controlvector(1)/magcv,controlvector(2)/magcv,controlvector(3)/magcv,forcevector(1)/magfv,forcevector(2)/magfv,forcevector(3)/magfv,alphaopt,betaopt,gammaopt);
+    %magfv=sqrt(forcevector(1)^2+forcevector(2)^2+forcevector(3)^2);
+    %magcv=sqrt(controlvector(1)^2+controlvector(2)^2+controlvector(3)^2);
+    %fprintf('\n magcv%+1.0e magfv%+1.0e cvx%+f cvy%+f cvz%+f fvx%+f fvy%+f fvz%+f  ao%+3.0f bo%+3.0f go%+3.0f',magcv,magfv,controlvector(1)/magcv,controlvector(2)/magcv,controlvector(3)/magcv,forcevector(1)/magfv,forcevector(2)/magfv,forcevector(3)/magfv,alphaopt,betaopt,gammaopt);
     udim=forcevector;
     anglestemptemp=[alphaopt betaopt gammaopt]';
     utemptemp=udim; %% this is to be checked
@@ -332,7 +345,7 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function visualization(ns,ttime,sstx,ssty,sstz,altitude,angles,modelfilename,radiusOfEarth,mu,vis_step,accelerationfactor)
+function visualization(ns,ttime,sstx,ssty,sstz,altitude,anglesGE,modelfilename,radiusOfEarth,mu,vis_step,accelerationfactor)
   %% this function adds the global movement of the satellite based on Kepler's laws
   %this function works with km instead of m %!harmonize
   RE = radiusOfEarth/1000;          % Earth's radius                            [km]
@@ -431,9 +444,9 @@ function visualization(ns,ttime,sstx,ssty,sstz,altitude,angles,modelfilename,rad
     sstxvgrid(j,:)=interp1(ttime,sstx(j,:),t);
     sstyvgrid(j,:)=interp1(ttime,ssty(j,:),t);
     sstzvgrid(j,:)=interp1(ttime,sstz(j,:),t);
-    pitchvgrid(j,:)=interp1(ttime,squeeze(angles(1,j,:)),t);
-    yawvgrid(j,:)=interp1(ttime,squeeze(angles(2,j,:)),t);
-    rollvgrid(j,:)=interp1(ttime,squeeze(angles(3,j,:)),t);
+    zaxvgrid(j,:)=interp1(ttime,squeeze(anglesGE(1,j,:)),t);
+    yaxvgrid(j,:)=interp1(ttime,squeeze(anglesGE(2,j,:)),t);
+    xaxvgrid(j,:)=interp1(ttime,squeeze(anglesGE(3,j,:)),t);
 %angles=zeros(3,ns);
 %anglestemp=zeros(3,ns,size(tspan,2));
   
@@ -469,7 +482,7 @@ function visualization(ns,ttime,sstx,ssty,sstz,altitude,angles,modelfilename,rad
             Lat(j,i)     = Lat(1,i)-latoff(j-1,i)/pi*180;      % Latitude             [deg]
             Long(j,i)    = Long(1,i)+longoff(j-1,i)/pi*180;    % Longitude            [deg]
             rs2(j,i)     = rs(i)'+sstzvgrid(j-1,i)/1000;       % radius                [km]
-            yawvgrid(j-1,i)= yawvgrid(j-1,i)-180;
+            zaxvgrid(j-1,i)= zaxvgrid(j-1,i)-180;
         elseif i==size(t,2) %% last point
             if Lat(1,i)>Lat(1,i-1) %% northward
                 Lat(j,i)     = Lat(1,i)+latoff(j-1,i)/pi*180;      % Latitude             [deg]
@@ -545,14 +558,14 @@ figure
       ylabel("rs2");
       
   %% write KML file
-  writeKML(Lat,Long,rs2,t,ns,pitchvgrid,yawvgrid,rollvgrid,modelfilename,footprintsize,accelerationfactor)
+  writeKML(Lat,Long,rs2,t,ns,zaxvgrid,yaxvgrid,xaxvgrid,modelfilename,footprintsize,accelerationfactor)
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function writeKML(Lat,Long,rs,t,ns,pitchvgrid,yawvgrid,rollvgrid,modelfilename,footprintsize,accelerationfactor)
+function writeKML(Lat,Long,rs,t,ns,zaxvgrid,yaxvgrid,xaxvgrid,modelfilename,footprintsize,accelerationfactor)
 %function writeKML(Lat,Long,rs,t,ns,angles,modelfilename)
   
   %! simulation cannot be longer than a day
@@ -810,7 +823,7 @@ function writeKML(Lat,Long,rs,t,ns,pitchvgrid,yawvgrid,rollvgrid,modelfilename,f
     end
     for i=1:size(t,2)
       %fprintf(id,'\n  <gx:angles>%f %f %f</gx:angles>',angles(2,j-1,i),angles(1,j-1,i),angles(3,j-1,i));%% yaw,pitch, roll 
-      fprintf(id,'\n  <gx:angles>%f %f %f</gx:angles>',yawvgrid(j-1,i),pitchvgrid(j-1,i),rollvgrid(j-1,i));%% yaw,pitch, roll 
+      fprintf(id,'\n  <gx:angles>%f %f %f</gx:angles>',zaxvgrid(j-1,i),yaxvgrid(j-1,i),xaxvgrid(j-1,i));%% yaw,pitch, roll 
     end 
     fprintf(id,'\n  </gx:Track></Placemark>');
    end
