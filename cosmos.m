@@ -51,10 +51,12 @@ ns=2;                   %% number of satellites
 panels=[0 0 1]; 
 panelsurface=0.01; %m^2
 modelfilename=strcat('figures',filesep,'cocu.dae');
+ejectionvelocity=0.5; % m/s
+timebetweenejections=10; % in s
 
 %% simulation constants
-totaltime=8*2*pi/omega ;    %% in s
-startsecondphase=4*2*pi/omega;     %% in s
+totaltime=10*2*pi/omega ;    %% in s
+startsecondphase=14*2*pi/omega;     %% in s
 currenttime=0;          %% now, should usually be 0
 time=[0];
 comp_step=60;            %% computational step size in s
@@ -69,9 +71,9 @@ xd=zeros(6,ns,size(timetemp,2)); %% columns: desired statevector per each satell
 
 %% forcevector determination
 deltaangle=15;
-alpha=0:deltaangle:360; %% yaw
+alpha=0:deltaangle:360; %% roll
 beta =0:deltaangle:180; %% pitch 
-gamma=0:deltaangle:360; %% roll
+gamma=0:deltaangle:360; %% yaw
 aeroscalingfactor=1;
 sunscalingfactor=10;
 totalforcevector = totalforcevectorfunction(wind,sunlight,panels(1),panels(2),panels(3),alpha,beta,gamma,panelsurface,aeroscalingfactor,solarpressure,sunscalingfactor,windpressure, deltaangle);
@@ -80,22 +82,20 @@ totalforcevector = totalforcevectorfunction(wind,sunlight,panels(1),panels(2),pa
 VIS_C=100;                %% scales deployment, formation size
 VIS_ACC_FAC=120;        %% speeds up the Google Earth visualization
 VIS_STEP=60;            %% visualization step size in s
-fprintf('\n duration of movie without US %f min\n',totaltime/VIS_ACC_FAC/60) %% length of animation in min: totaltime/vis_step/accelerationfactor/60
+fprintf('\n duration of movie without US %2.1f min\n',totaltime/VIS_ACC_FAC/60) %% length of animation in min: totaltime/vis_step/accelerationfactor/60
 %! there are more parameters in the visualization function
 
 %% initial conditions of ODE
-sst=zeros(6,ns);        %% columns: statevector per each satellite
-ssttemp=zeros(6,ns,size(timetemp,2));
-angles=zeros(3,ns); %alpha (roll), beta (pitch), gamma (pitch)
+sst=zeros(9,ns);        %% columns: statevector per each satellite
+ssttemp=zeros(9,ns,size(timetemp,2));
 u=zeros(3,ns);%% control vector
-anglestemp=zeros(3,ns,size(timetemp,2));
 utemp=zeros(3,ns,size(timetemp,2));
-ejectionvelocity=0.5; % m/s
-timebetweenejections=10; % in s
 for i=1:ns
-    ssttemp(:,i,end)=0;
-    ssttemp(1,i,end)=(i-1)*ejectionvelocity*timebetweenejections;
-    ssttemp(4,i,end)=0;%ejectionvelocity;
+    ssttemp(1,i,1)=(i-1)*ejectionvelocity*timebetweenejections;
+    ssttemp(4,i,1)=0;%ejectionvelocity;
+    ssttemp(7,i,1)=0;%% alpha
+    ssttemp(8,i,1)=0;%% beta
+    ssttemp(9,i,1)=0;%% gamma
     %ssttemp(:,i,end)=CCCC*[(i-1)*5 0 0 0 0 0]';
     %ssttemp(:,i,end)=C4*[(i-1)*5 0 0 0.015 0.015 0.015]';
     %ssttemp(:,i,end)=C4*[(i-1)*5 0 0 0.00015 0.00015 0.00015]';
@@ -104,10 +104,8 @@ for i=1:ns
     %sst(:,1)=[0 0 0 0.015 0.005 0.015]';
     %sst(:,2)=[15 0 0 0.005 0.015 0.015]';
 end
-sst(:,:)=ssttemp(:,:,end);
 
 %% solving the ODE for each control step
-tic
 while currenttime<totaltime    
   if currenttime<startsecondphase    %% initial desired vector
     %% desired statevector II
@@ -144,33 +142,27 @@ while currenttime<totaltime
     %xd(3,4,:)=sc*C3*AAA*sin(omega*(currenttime+tspan));   
   end
   %% set initial condition (for statevector) for new ODE solver loop
-  x(:,:,1)=ssttemp(:,:,end);
   %% apply disturbances
-  %x(:,:,1)=x(:,:,1)*1.01
   flops=0;
   for j=1:size(timetemp,2)-1 %% for each timestep within ODE solver loop
     for i=1:ns
       %% compute error
-      e(:,i,j)=x(:,i,j)-xd(:,i,j);
+      e(:,i,j)=ssttemp(1:6,i,j)-xd(:,i,j);
       flops=flops+6;
     end
     %% modify error vector with some averages according to Ivanov
     %x(:,1,j+1)=[0 0 0 0 0 0]';
-    %anglestemp(:,1,j+1)=[45 0 0];
     %utemp(:,1,j+1)=[-1.2 0 0]';
-    %anglestemp(:,1,j+1)=45;
     for i=2:ns %% for each satellite but not the master satellite
-        [x(:,i,j+1),anglestemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),x(:,i,j),e(:,i,j),flops,rho,v,alpha,beta,gamma,totalforcevector,anglestemp(1,i,j),anglestemp(2,i,j),anglestemp(3,i,j));
+        [ssttemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),ssttemp(:,i,j),e(:,i,j),flops,rho,v,alpha,beta,gamma,totalforcevector,ssttemp(7,i,j),ssttemp(8,i,j),ssttemp(9,i,j));
     end 
   end
-  ssttemp(:,:,:)=x;  %% columns: statevector, rows: (x,y,z,u,v,w) for each satellite, depth: timeevolution
+  ssttemp(:,:,1)=ssttemp(:,:,end);
   fprintf('\n');
   %% append data of last control loop to global data vector
   sst=cat(3,sst,ssttemp(:,:,2:end));  
-  angles=cat(3,angles,anglestemp(:,:,2:end));  
   u=cat(3,u,utemp(:,:,2:end));   
   time=[time ; currenttime+timetemp(2:end)'];  
-  %ttime=[ttime ; currenttime+t(2:end)];  
   %% print progress of iterations to screen
   %fprintf('\n flops %d',flops);
   if currenttime>0
@@ -179,20 +171,23 @@ while currenttime<totaltime
   currenttime=time(end);
   fprintf('time %2.1e / totaltime %2.1e, progress %2.1e %%', currenttime, totaltime,currenttime/totaltime*100);
 end
-toc
-for i=1:ns %% reset angles for first timestep for better visualization %! this could be done for several timesteps as some kind of waiting period before control kicks in
-    angles(:,i,1)=[0 0 0]';
-end
-plotting(angles,sst,time,ns,omega,u)
+
+%for i=1:ns %% reset angles for first timestep for better visualization %! this could be done for several timesteps as some kind of waiting period before control kicks in
+%    angles(:,i,1)=[0 0 0]';
+%end
+
+%% results' plotting
+plotting(sst(7:9,:,:),sst(1:6,:,:),time,ns,omega,u)
 
 %% convert from classical ZYZ Euler angles to Google Earth Euler angles ZYX
-anglesGE=zeros(size(angles));
-for j=1:size(angles,3)
+anglesGE=squeeze(sst(7:9,:,:));
+for j=1:size(anglesGE,3)
   for i=2:ns
-    rotm = eul2rotm(angles(:,i,j)'/180*pi,'ZYZ');
+    rotm = eul2rotm(anglesGE(:,i,j)'/180*pi,'ZYZ');
     anglesGE(:,i,j)=rotm2eul(rotm,'ZYX')'/pi*180;
   end
 end
+
 %% map on globe and create kml file
 visualization(ns,time,VIS_C*squeeze(sst(1,:,:)),VIS_C*squeeze(sst(2,:,:)),VIS_C*squeeze(sst(3,:,:)),altitude,anglesGE, modelfilename,radiusOfEarth,mu,VIS_STEP,VIS_ACC_FAC)
 
@@ -204,111 +199,24 @@ visualization(ns,time,VIS_C*squeeze(sst(1,:,:)),VIS_C*squeeze(sst(2,:,:)),VIS_C*
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [xtemptemp,anglestemptemp,utemptemp,flops]=hcwequation2(IR,P,A,B,deltat,x0,e,flops,rho,v,alpha,beta,gamma,totalforcevector,oldalphaopt,oldbetaopt,oldgammaopt)
+function [ssttemptemp,controlvector,flops]=hcwequation2(IR,P,A,B,   deltat,                sst0,          e,       flops,rho,v,alpha,beta,gamma,totalforcevector,oldalphaopt,oldbetaopt,oldgammaopt)
+    %sttemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),ssttemp(:,i,j),e(:,i,j),flops,rho,v,alpha,beta,gamma,totalforcevector,ssttemp(7,i,j),ssttemp(8,i,j),ssttemp(9,i,j));
+
 %% HCW equation
   
   satmass=2; %% kg
   S=0.1^2; %% m2
   k=1/satmass*rho*v^2*S;
-  
-  umax=1.19;
-  uyzmax=0.19;
-  eta=0.1;    
-  eps=0.1;
-
-  old=0;
-  
+    
   %% compute control vector
-  u1(:)=-IR*B'*P*e(:);
+  controlvector=-IR*B'*P*e;
   flops=flops+1e6;
 
-  if old
-    unondim=u1/k;%+umax/2;%-[umax/2 0 0]'; %% to set u to a default value and size u correctly
-    flops=flops+3;
-
-    %plot([0:5:180],-2*eps*(sind([0:5:180])).^3+eta*(eps-1)*(sind([0:5:180])).^2+(eps-1)*sind([0:5:180]))
-    %syms theta;
-    %eqn = -1==-2*eps*(sind(theta)).^3+eta*(eps-1)*(sind(theta)).^2+(eps-1)*sind(theta);
-    %solx = vpa(solve(eqn,theta))
-
-    %{
-    theta2=0:5:90;
-    for i=1:size(theta2,2)
-        p(i)=-2*eps*(sind(theta2(i)))^3+eta*(eps-1)*(sind(theta2(i)))^2+(eps-1)*sind(theta2(i));
-        g(i)=-cosd(theta2(i))*sind(theta2(i))*(eta-eps*eta+2*eps*sind(theta2(i)));
-        p2(i)=-1.2*sind(theta2(i));
-        g2(i)=-0.12*sind(2*theta2(i));
-    end
-    plot(theta2,p,theta2,g,theta2,p2,theta2,g2)
-    %}
-
-
-    %phi1=acos(unondim(2)/sqrt(unondim(2)^2+unondim(3)^2));
-    %phi2=asin(unondim(3)/sqrt(unondim(2)^2+unondim(3)^2));
-    %input('a')
-   %{ 
-      if unondim(1)>=1/2*umax; %% going forward with drag
-        unondim(1)=1/2*umax;
-        unondim(2)=0;
-        unondim(3)=1/2*umax*100;
-      elseif unon(1)<=-1/2*umax %% going backward 
-        unondim(1)=-1/2*umax;
-        unondim(2)=0;
-        unondim(3)=0;
-      %elseif sqrt(u(2,i)^2+u(3,i)^2)>uyzmax
-        %  u(1,i)=-0.8;
-        %  u(2,i)=u1(2,i)/uyzmax;
-        %  u(3,i)=u1(3,i)/uyzmax;
-      else 
-        print('error')
-      end
-
-    if unondim(1)<0
-      u1temp=-unondim(1);
-    else
-      u1temp=unondim(1);
-    end
-    %}
-
-    %p2(i)=-1.2*sind(theta2(i));
-    %g2(i)=-0.12*sind(2*theta2(i));
-
-    if unondim(1)>umax/2
-        unondim(1)=umax/2;
-        unondim(2)=0;
-        unondim(3)=0;
-    elseif unondim(1)<-umax/2
-        unondim(1)=-umax/2;
-        unondim(2)=0;
-        unondim(3)=0;
-    end
-    anglestemptemp(1)=asind(-1/1.2*(unondim(1)-1/2*umax));
-    anglestemptemp(2)=0;
-    anglestemptemp(3)=0;
-    %anglestemptemp(1) = asind( unondim(3)./sqrt( unondim(1)^2 + unondim(3)^2));%pitch
-    %anglestemptemp(2) = asind( unondim(2)./sqrt( unondim(1)^2 + unondim(2)^2));%yaw
-    %anglestemptemp(3) =0;% asind( u(3)./sqrt( u(2)^2 + u(3)^2));%roll
-    flops=flops+1e6;
-
-    %e'
-    %u
-    %anglestemptemp
-    udim=unondim*k;
-    utemptemp=unondim;
-  else
-    %% the control vector
-    controlvector=u1;
-    [forcevector,alphaopt,betaopt,gammaopt]=findBestAerodynamicAngles(totalforcevector,controlvector,alpha,beta,gamma,oldalphaopt,oldbetaopt,oldgammaopt);
-    %magfv=sqrt(forcevector(1)^2+forcevector(2)^2+forcevector(3)^2);
-    %magcv=sqrt(controlvector(1)^2+controlvector(2)^2+controlvector(3)^2);
-    %fprintf('\n magcv%+1.0e magfv%+1.0e cvx%+f cvy%+f cvz%+f fvx%+f fvy%+f fvz%+f  ao%+3.0f bo%+3.0f go%+3.0f',magcv,magfv,controlvector(1)/magcv,controlvector(2)/magcv,controlvector(3)/magcv,forcevector(1)/magfv,forcevector(2)/magfv,forcevector(3)/magfv,alphaopt,betaopt,gammaopt);
-    udim=forcevector;
-    anglestemptemp=[alphaopt betaopt gammaopt]';
-    utemptemp=udim; %% this is to be checked
-  end
+  [forcevector,alphaopt,betaopt,gammaopt]=findBestAerodynamicAngles(totalforcevector,controlvector,alpha,beta,gamma,oldalphaopt,oldbetaopt,oldgammaopt);
   
   %% solve ODE with backward Euler step
-  xtemptemp(:)=(A*x0(:)+B*udim(:))*deltat+x0(:);
+  ssttemptemp(1:6)=(A*sst0(1:6)+B*forcevector)*deltat+sst0(1:6);
+  ssttemptemp(7:9)=[alphaopt betaopt gammaopt]';
   flops=flops+1e6; 
 end
 
