@@ -6,61 +6,81 @@
 %% 69th International Astronautical Congress (IAC), Bremen, Germany, 1-5 October 2018.
 
 %% Revision history:
+%% 29/07/2019:  first version of satellite attitude through Euler angles implemented, needs verification
 %% 20/04/2019:  runs arbitrary number of satellites with HCW equation without control, looks much like fig 9 of Ivanov
 %% 04/05/2019:  LQR control implemented but without aerodynamics 
-%% 09/05/2019: aerodynamics in local-x direction,i.e. pitch implemented, correctness to be checked
+%% 09/05/2019:  aerodynamics in local-x direction,i.e. pitch implemented, correctness to be checked
 %%
 %% todo:
+%% merge X and angles into state vector sst
 %% implement J2
-%% implement aerodynamics and visualization of angles
-%% arbitrary inclinations
+%% arbitrary inclinations in visualization
 %% clean up of code
 %% eliptical orbits
 %% SGP4 
 %% compute moment coefficients and moments
 
+%% Matlab parameters
 clear all;close all;clc;%format long;
 oldpath = path; path(oldpath,'..\matlabfunctions\')
-%% scaling factor
-C=100;               %% 
 
+%% physics constants
+radiusOfEarth=6371000;  %% in m;
+mu=3.986004418E14;      %% in m3?s?2
+
+%% case constants
 altitude=340000;        %% in m
 [rho,v]=orbitalproperties(altitude);
-density=rho;%1e-7;           %! requires checking, shall be rho
-
-rho=rho*C;
-density=density*C;
-
-radiusOfEarth=6371000;  %% in m;
-sc=2;                   %% scale for second configuration; scales also figure
-
-%%satelliteshapeproperties, number of 10cmx10cm faces to x,y,z(body coordinates, normally aligned with):
-panels=[0 0 1]; 
-modelfilename=strcat('figures',filesep,'cocu.dae');
-
-mu=3.986004418E14;      %% in m3?s?2
 r0=radiusOfEarth+altitude; %% in m
 omega=sqrt(mu/r0^3);
 [P,IR,A,B]=riccatiequation(omega);
 
+%% orbital environment
+windpressure=rho/2*v^2;%% pascal
+wind=[-1 0 0]' ;
+wind=wind/sqrt(wind(1)^2+wind(2)^2+wind(3)^2);
+solarpressure=0;%2*4.5e-6; %% pascal
+sunlight=[1 1 1]'; 
+sunlight=sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2);
+
+%% formation flight constants
+sc=2;                   %% scale for second configuration; scales also figure
 ns=2;                   %% number of satellites
 
+%% satelliteshapeproperties, number of 10cmx10cm faces to x,y,z(body coordinates, normally aligned with):
+panels=[0 0 1]; 
+panelsurface=0.01; %m^2
+modelfilename=strcat('figures',filesep,'cocu.dae');
 
-%% timespan to simulate
+%% simulation constants
 totaltime=8*2*pi/omega ;    %% in s
 startsecondphase=4*2*pi/omega;     %% in s
 currenttime=0;          %% now, should usually be 0
-
 time=[0];
 comp_step=60;            %% computational step size in s
 lengthcontrolloop=300;  %% in s
 timetemp=0:comp_step:lengthcontrolloop; %% duration and interpolation timestep for each control loop. ODE45 chooses its one optimal timestep. 150s total duration is consistent with Ivanov
 fprintf('\n number of float variables for each control loop: %d, size %f kbyte',size(timetemp,2)*(1+6+6+3)+6+1,(size(timetemp,2)*(1+6+6+3)+6+1)*4/1024); %% size of time vector, state vector, desired state vector and anglevector, C and omega of analytical solution
 
+%% desired statevector constants
+AAA=100;
+DDD=115;
+xd=zeros(6,ns,size(timetemp,2)); %% columns: desired statevector per each satellite
+
+%% forcevector determination
+deltaangle=15;
+alpha=0:deltaangle:360; %% yaw
+beta =0:deltaangle:180; %% pitch 
+gamma=0:deltaangle:360; %% roll
+aeroscalingfactor=1;
+sunscalingfactor=10;
+totalforcevector = totalforcevectorfunction(wind,sunlight,panels(1),panels(2),panels(3),alpha,beta,gamma,panelsurface,aeroscalingfactor,solarpressure,sunscalingfactor,windpressure, deltaangle);
+
 %% parameters for visualization
-accelerationfactor=120;
-vis_step=60;             %% visualization step size
-fprintf('\n duration of movie without US %f min\n',totaltime/accelerationfactor/60) %% length of animation in min: totaltime/vis_step/accelerationfactor/60
+VIS_C=100;                %% scales deployment, formation size
+VIS_ACC_FAC=120;        %% speeds up the Google Earth visualization
+VIS_STEP=60;            %% visualization step size in s
+fprintf('\n duration of movie without US %f min\n',totaltime/VIS_ACC_FAC/60) %% length of animation in min: totaltime/vis_step/accelerationfactor/60
 %! there are more parameters in the visualization function
 
 %% initial conditions of ODE
@@ -74,7 +94,7 @@ ejectionvelocity=0.5; % m/s
 timebetweenejections=10; % in s
 for i=1:ns
     ssttemp(:,i,end)=0;
-    ssttemp(1,i,end)=C*(i-1)*ejectionvelocity*timebetweenejections;
+    ssttemp(1,i,end)=(i-1)*ejectionvelocity*timebetweenejections;
     ssttemp(4,i,end)=0;%ejectionvelocity;
     %ssttemp(:,i,end)=CCCC*[(i-1)*5 0 0 0 0 0]';
     %ssttemp(:,i,end)=C4*[(i-1)*5 0 0 0.015 0.015 0.015]';
@@ -85,48 +105,14 @@ for i=1:ns
     %sst(:,2)=[15 0 0 0.005 0.015 0.015]';
 end
 sst(:,:)=ssttemp(:,:,end);
+
 %% solving the ODE for each control step
-
-%% desired statevector I
-AAA=100;
-DDD=115;
-xd=zeros(6,ns,size(timetemp,2)); %% columns: desired statevector per each satellite
-
-%% use 1 Matlab ODE, 2 home made, or 3 home made non vector based
-UMOO=2;
-
-%% parameters for ODE45
-opts = odeset('RelTol',1e-2,'AbsTol',1e-4);
-
-%% for forcevector determination
-  deltaangle=15;
-  alpha=0:deltaangle:360; %% yaw
-  beta =0:deltaangle:180; %% pitch 
-  gamma=0:deltaangle:360; %% roll
-  aeroscalingfactor=1;
-  sunscalingfactor=10;
-
-  %% orbital environment
-  %altitude =340000; %% in m
-  %[rho,v]=orbitalproperties(altitude);
-  windpressure=rho/2*v^2;%% pascal
-  wind=[-1 0 0]' ;
-  wind=wind/sqrt(wind(1)^2+wind(2)^2+wind(3)^2);
-  solarpressure=0;%2*4.5e-6; %% pascal
-  sunlight=[1 1 1]'; 
-  sunlight=sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2);
-
-  %% the space craft
-  panelsurface=0.01; %m^2
-
-  totalforcevector = totalforcevectorfunction(wind,sunlight,panels(1),panels(2),panels(3),alpha,beta,gamma,panelsurface,aeroscalingfactor,solarpressure,sunscalingfactor,windpressure, deltaangle);
-
 tic
 while currenttime<totaltime    
   if currenttime<startsecondphase    %% initial desired vector
     %% desired statevector II
 
-    xd(1,2,:)=C*DDD;
+    xd(1,2,:)=DDD;
 
     %xd(1,1,:)=-C3*DDD;
     %%xd(2,2,:)=C3*AAA*sqrt(3)*sin(omega*(currenttime+tspan));
@@ -143,7 +129,7 @@ while currenttime<totaltime
   else                      %% switch to new desired statevector
     %% desired statevector II
 
-    xd(1,2,:)=sc*C*DDD;
+    xd(1,2,:)=sc*DDD;
     
     %xd(1,1,:)=-sc*C3*DDD;
     %xd(2,2,:)=sc*C3*AAA*sqrt(3)*sin(omega*(currenttime+timetemp));
@@ -157,42 +143,27 @@ while currenttime<totaltime
     %xd(2,4,:)=sc*C3*AAA*sqrt(3)*sin(omega*(currenttime+tspan)+acos(1/3));
     %xd(3,4,:)=sc*C3*AAA*sin(omega*(currenttime+tspan));   
   end
-  if UMOO==1
+  %% set initial condition (for statevector) for new ODE solver loop
+  x(:,:,1)=ssttemp(:,:,end);
+  %% apply disturbances
+  %x(:,:,1)=x(:,:,1)*1.01
+  flops=0;
+  for j=1:size(timetemp,2)-1 %% for each timestep within ODE solver loop
     for i=1:ns
-        %% solve ODE      
-        [t,x]=ode23(@(t,x) hcwequation(t,x,IR,P,A,B,xd(:,i,:),currenttime,timetemp),timetemp,ssttemp(:,i,size(ssttemp,3)),opts,density,v);
-        ssttemp(:,i,:)=x';  %% columns: statevector, rows: (x,y,z,u,v,w), depth: timeevolution   
-        %% get data out of ODE
-        [a1,anglestemp(:,i,:),u]=hcwequation(t,x',IR,P,A,B,xd(:,i,:),currenttime,timetemp,density,v);
-        clear hcwequation
-     end
-  elseif UMOO==2 %% use home made vector based solver: Euler backward
-    %% set initial condition (for statevector) for new ODE solver loop
-    x(:,:,1)=ssttemp(:,:,end);
-    %% apply disturbances
-    %x(:,:,1)=x(:,:,1)*1.01
-    flops=0;
-    for j=1:size(timetemp,2)-1 %% for each timestep within ODE solver loop
-      for i=1:ns
-        %% compute error
-        e(:,i,j)=x(:,i,j)-xd(:,i,j);
-        flops=flops+6;
-      end
-      %% modify error vector with some averages according to Ivanov
-      %x(:,1,j+1)=[0 0 0 0 0 0]';
-      %anglestemp(:,1,j+1)=[45 0 0];
-      %utemp(:,1,j+1)=[-1.2 0 0]';
-      %anglestemp(:,1,j+1)=45;
-      for i=2:ns %% for each satellite but not the master satellite
-          [x(:,i,j+1),anglestemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),x(:,i,j),e(:,i,j),flops,density,rho,v,alpha,beta,gamma,totalforcevector,anglestemp(1,i,j),anglestemp(2,i,j),anglestemp(3,i,j));
-      end 
+      %% compute error
+      e(:,i,j)=x(:,i,j)-xd(:,i,j);
+      flops=flops+6;
     end
-    ssttemp(:,:,:)=x;  %% columns: statevector, rows: (x,y,z,u,v,w) for each satellite, depth: timeevolution
-  elseif UMOO==3 %% use home made loop based solver
-    ;
-  else
-    fprintf('error in choosing ODE solver');
+    %% modify error vector with some averages according to Ivanov
+    %x(:,1,j+1)=[0 0 0 0 0 0]';
+    %anglestemp(:,1,j+1)=[45 0 0];
+    %utemp(:,1,j+1)=[-1.2 0 0]';
+    %anglestemp(:,1,j+1)=45;
+    for i=2:ns %% for each satellite but not the master satellite
+        [x(:,i,j+1),anglestemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),x(:,i,j),e(:,i,j),flops,rho,v,alpha,beta,gamma,totalforcevector,anglestemp(1,i,j),anglestemp(2,i,j),anglestemp(3,i,j));
+    end 
   end
+  ssttemp(:,:,:)=x;  %% columns: statevector, rows: (x,y,z,u,v,w) for each satellite, depth: timeevolution
   fprintf('\n');
   %% append data of last control loop to global data vector
   sst=cat(3,sst,ssttemp(:,:,2:end));  
@@ -223,7 +194,7 @@ for j=1:size(angles,3)
   end
 end
 %% map on globe and create kml file
-visualization(ns,time,squeeze(sst(1,:,:)),squeeze(sst(2,:,:)),squeeze(sst(3,:,:)),altitude,anglesGE, modelfilename,radiusOfEarth,mu,vis_step,accelerationfactor)
+visualization(ns,time,VIS_C*squeeze(sst(1,:,:)),VIS_C*squeeze(sst(2,:,:)),VIS_C*squeeze(sst(3,:,:)),altitude,anglesGE, modelfilename,radiusOfEarth,mu,VIS_STEP,VIS_ACC_FAC)
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -233,12 +204,12 @@ visualization(ns,time,squeeze(sst(1,:,:)),squeeze(sst(2,:,:)),squeeze(sst(3,:,:)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [xtemptemp,anglestemptemp,utemptemp,flops]=hcwequation2(IR,P,A,B,deltat,x0,e,flops,density,rho,v,alpha,beta,gamma,totalforcevector,oldalphaopt,oldbetaopt,oldgammaopt)
+function [xtemptemp,anglestemptemp,utemptemp,flops]=hcwequation2(IR,P,A,B,deltat,x0,e,flops,rho,v,alpha,beta,gamma,totalforcevector,oldalphaopt,oldbetaopt,oldgammaopt)
 %% HCW equation
   
   satmass=2; %% kg
   S=0.1^2; %% m2
-  k=1/satmass*density*v^2*S;
+  k=1/satmass*rho*v^2*S;
   
   umax=1.19;
   uyzmax=0.19;
@@ -986,7 +957,7 @@ function plotting(angles,sst,ttime,ns,omega,u)
           plot3(squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'-');hold on
           names(i)=[{strcat('sat',int2str(i))}];
         end
-        xlabel('X [m]');ylabel('Y [m]');zlabel('Z [m]');legend(names);grid on;hold off
+        xlabel('X [m]');ylabel('Y [m]');zlabel('Z [m]');legend(names);grid on;hold off;axis equal;
         if 0
           axis(sc*[-35e3 35e3 -35e3 35e3 -35e3 35e3])
           xticks(sc*[-20e3 0 20e3]);yticks(sc*[-20e3 0 20e3]);zticks(sc*[-20e3 0 20e3]);
@@ -998,14 +969,17 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [dxdt,anglestemp,u]=hcwequation(t,x,IR,P,A,B,xdi,currenttime,timespan,density,v)
+
+
+%{
+function [dxdt,anglestemp,u]=hcwequation(t,x,IR,P,A,B,xdi,currenttime,timespan,rho,v)
 %% HCW equation
   persistent ang;
   persistent timearray;
 
   satmass=2; %% kg
   S=0.1^2; %% m2
-  k=1/satmass*density*v^2*S;
+  k=1/satmass*rho*v^2*S;
   umax=-k*1.2/satmass;
   uyzmax=k*0.24/satmass;
   xdi2x = interp1(currenttime+timespan,squeeze(xdi(1,1,:)),currenttime+t);% Interpolate the data set (ft,f) at time t
@@ -1064,3 +1038,33 @@ function [dxdt,anglestemp,u]=hcwequation(t,x,IR,P,A,B,xdi,currenttime,timespan,d
   anglestemp=ang;
   dxdt=A*x+B*u;
 end
+%}
+
+%{
+
+%% use 1 Matlab ODE, 2 home made, or 3 home made non vector based
+UMOO=2;
+
+%% parameters for ODE45
+opts = odeset('RelTol',1e-2,'AbsTol',1e-4);
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  if UMOO==1
+    for i=1:ns
+        %% solve ODE      
+        [t,x]=ode23(@(t,x) hcwequation(t,x,IR,P,A,B,xd(:,i,:),currenttime,timetemp),timetemp,ssttemp(:,i,size(ssttemp,3)),opts,rho,v);
+        ssttemp(:,i,:)=x';  %% columns: statevector, rows: (x,y,z,u,v,w), depth: timeevolution   
+        %% get data out of ODE
+        [a1,anglestemp(:,i,:),u]=hcwequation(t,x',IR,P,A,B,xd(:,i,:),currenttime,timetemp,rho,v);
+        clear hcwequation
+     end
+  elseif UMOO==2 %% use home made vector based solver: Euler backward
+  elseif UMOO==3 %% use home made loop based solver
+    ;
+  else
+    fprintf('error in choosing ODE solver');
+  end
+
+%}
