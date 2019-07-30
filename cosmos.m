@@ -57,7 +57,7 @@ ejectionVelocity=0.5; % m/s
 timeBetweenEjections=10; % in s
 
 %% simulation constants
-totalTime=10*2*pi/omega ;    %% in s
+totalTime=6*2*pi/omega ;    %% in s
 startSecondPhase=14*2*pi/omega;     %% in s
 currentTime=0;          %% now, should usually be 0
 time=[0];
@@ -78,7 +78,7 @@ betas =0:deltaAngle:180; %% pitch
 gammas=0:deltaAngle:360; %% yaw
 aeroscalingfactor=1; sunscalingfactor=10; %% these are for visualization of vectors only
 totalforcevector = totalforcevectorfunction(wind,sunlight,panels(1),panels(2),panels(3),alphas,betas,gammas,panelSurface,aeroscalingfactor,solarpressure,sunscalingfactor,windpressure, deltaAngle);
-input('a')
+
 %% parameters for visualization
 %! there are more parameters in the visualization function
 VIS_C=100;                %% scales deployment, formation size
@@ -94,7 +94,6 @@ sst=zeros(9,ns);        %% columns: statevector per each satellite
 ssttemp=zeros(9,ns,size(timetemp,2));
 utemp=zeros(3,ns,size(timetemp,2));
 etemp=zeros(6,ns,size(timetemp,2));
-
 
 for i=1:ns
     ssttemp(1,i,1)=(i-1)*ejectionVelocity*timeBetweenEjections; %% x position
@@ -234,9 +233,6 @@ function [ssttemptemp,controlvector,flops]=hcwequation2(IR,P,A,B,   deltat,     
   %! add computational relaxation here
   
   %! add vehicle inertia here
-  controlvector'/sqrt(controlvector(1)^2+controlvector(2)^2+controlvector(3)^2)
-  forcevector'/sqrt(forcevector(1)^2+forcevector(2)^2+forcevector(3)^2)
-  fprintf('-------')
   %% solve ODE with backward Euler step
   ssttemptemp(1:6)=(A*sst0(1:6)+B*forcevector)*deltat+sst0(1:6);
   ssttemptemp(7:9)=[alphaOpt betaOpt gammaOpt]';
