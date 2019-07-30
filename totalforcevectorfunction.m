@@ -1,8 +1,9 @@
-function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypanels,nozpanels,alpha,beta,gamma,panelsurface,aeroscalingfactor,solarpressure,sunscalingfactor, windpressure,deltaangle)
+function totalforcevector = totalforcevectorfunction(wind,sunlight,noxpanels,noypanels,nozpanels,alphas,betas,gammas,panelsurface,aeroscalingfactor,solarpressure,sunscalingfactor, windpressure,deltaangle)
+        %totalforcevector = totalforcevectorfunction(wind,sunlight,panels(1),panels(2),panels(3),alphas,betas,gammas,panelSurface,aeroscalingfactor,solarpressure,sunscalingfactor,windpressure, deltaAngle);  
   rotspeed=10;draw=0;
   %% %% the possible forcevectors
   %% define filename convenction
-  filename=strcat('tfv_panels',int2str(nozpanels),int2str(noxpanels),int2str(noypanels),'_wind',num2str(windpressure,'%1.1e'),int2str(wind(1)),int2str(wind(2)),int2str(wind(3)),'_sun',num2str(solarpressure,'%1.1e'),int2str(sunlight(1)),int2str(sunlight(2)),int2str(sunlight(3)),'_deltaangle',int2str(deltaangle),'.mat');
+  filename=strcat('tfv_panels',int2str(noxpanels),int2str(noypanels),int2str(nozpanels),'_wind',num2str(windpressure,'%1.1e'),int2str(wind(1)),int2str(wind(2)),int2str(wind(3)),'_sun',num2str(solarpressure,'%1.1e'),int2str(sunlight(1)),int2str(sunlight(2)),int2str(sunlight(3)),'_deltaangle',int2str(deltaangle),'.mat');
   %% does this file exists already
   if isfile(filename)
     fprintf('\nloading file');
@@ -22,34 +23,34 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
     pz1  = [axislength*0.9,axislength*0.9,0];pz2 = [axislength*0.9,-axislength*0.9,0];pz3 = [-axislength*0.9,-axislength*0.9,0];pz4 = [-axislength*0.9,axislength*0.9,0];
     pz12 = 0.33*pz1; pz22 = 0.33*pz2; pz32 = 0.33*pz3; pz42 = 0.33*pz4;
     pz13 = 0.66*pz1; pz23 = 0.66*pz2; pz33 = 0.66*pz3; pz43 = 0.66*pz4;
-    thetaaero=zeros(size(gamma,2),size(beta,2),size(alpha,2));
-    phiaero=zeros(size(gamma,2),size(beta,2),size(alpha,2));
-    thetasun=zeros(size(gamma,2),size(beta,2),size(alpha,2));
-    phisun=zeros(size(gamma,2),size(beta,2),size(alpha,2));
-    aerodragcoef=zeros(size(gamma,2),size(beta,2),size(alpha,2));
-    aeroliftcoef=zeros(size(gamma,2),size(beta,2),size(alpha,2));
-    sundragcoef=zeros(size(gamma,2),size(beta,2),size(alpha,2));
-    sunliftcoef=zeros(size(gamma,2),size(beta,2),size(alpha,2));
+    thetaaero=zeros(size(gammas,2),size(betas,2),size(alphas,2));
+    phiaero=zeros(size(gammas,2),size(betas,2),size(alphas,2));
+    thetasun=zeros(size(gammas,2),size(betas,2),size(alphas,2));
+    phisun=zeros(size(gammas,2),size(betas,2),size(alphas,2));
+    aerodragcoef=zeros(size(gammas,2),size(betas,2),size(alphas,2));
+    aeroliftcoef=zeros(size(gammas,2),size(betas,2),size(alphas,2));
+    sundragcoef=zeros(size(gammas,2),size(betas,2),size(alphas,2));
+    sunliftcoef=zeros(size(gammas,2),size(betas,2),size(alphas,2));
     aeroforcevectorz=[0 0 0]';
     aeroforcevectorx=[0 0 0]';
     aeroforcevectory=[0 0 0]';
     sunforcevectorz=[0 0 0]';
     sunforcevectorx=[0 0 0]';
     sunforcevectory=[0 0 0]';
-    totalforcevectorz=zeros(3,size(alpha,2),size(beta,2),size(gamma,2));
-    totalforcevectorx=zeros(3,size(alpha,2),size(beta,2),size(gamma,2));
-    totalforcevectory=zeros(3,size(alpha,2),size(beta,2),size(gamma,2));
-    totalforcevector =zeros(3,size(alpha,2),size(beta,2),size(gamma,2));
-    for k=1:size(gamma,2) %% yaw
-      for j=1:size(beta,2) %% pitch
-        for i=1:size(alpha,2) %% roll
+    totalforcevectorz=zeros(3,size(alphas,2),size(betas,2),size(gammas,2));
+    totalforcevectorx=zeros(3,size(alphas,2),size(betas,2),size(gammas,2));
+    totalforcevectory=zeros(3,size(alphas,2),size(betas,2),size(gammas,2));
+    totalforcevector =zeros(3,size(alphas,2),size(betas,2),size(gammas,2));
+    for k=1:size(gammas,2) %% yaw
+      for j=1:size(betas,2) %% pitch
+        for i=1:size(alphas,2) %% roll
           %k=1; %% yaw
           %j=3; %% pitch
           %i=1;%% roll
           %% rotation matrizes
-          RzY =[cosd(gamma(k)) -sind(gamma(k)) 0; sind(gamma(k)) cosd(gamma(k)) 0; 0 0 1]; %%yaw
-          Ry =[cosd(beta(j))  0 sind(beta(j))  ; 0 1 0                          ; -sind(beta(j)) 0 cosd(beta(j))]; %% pitch
-          RzR=[cosd(alpha(i)) -sind(alpha(i)) 0; sind(alpha(i)) cosd(alpha(i)) 0; 0 0 1]; %% roll
+          RzY =[cosd(gammas(k)) -sind(gammas(k)) 0; sind(gammas(k)) cosd(gammas(k)) 0; 0 0 1]; %%yaw
+          Ry =[cosd(betas(j))  0 sind(betas(j))  ; 0 1 0                          ; -sind(betas(j)) 0 cosd(betas(j))]; %% pitch
+          RzR=[cosd(alphas(i)) -sind(alphas(i)) 0; sind(alphas(i)) cosd(alphas(i)) 0; 0 0 1]; %% roll
           if nozpanels %% zpanel
             Igz=RzY*Ry*RzR*Iz;
             if norm(windpressure)
@@ -227,10 +228,10 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
     aeroliftcoef=squeeze(aeroliftcoef(:,j,k));
     figure
       subplot(2,1,1)
-        plot(beta,thetaaero,beta,phiaero);
+        plot(betas,thetaaero,betas,phiaero);
         legend('thetaaero','phiaero');grid on;
         subplot(2,1,2)
-        plot(alpha,aerodragcoef,alpha,aeroliftcoef);
+        plot(alphas,aerodragcoef,alphas,aeroliftcoef);
         legend('drag','lift');grid on;
     fprintf('\ndone\n');
     save(filename,'totalforcevector')

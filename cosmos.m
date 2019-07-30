@@ -35,7 +35,7 @@ r0=radiusOfEarth+altitude; %% in m
 omega=sqrt(mu/r0^3);    %% mean motion %! could be moved to orbitalproperties
 [P,IR,A,B]=riccatiequation(omega);
 argumentOfPerigeeAtTe0=0; %% not used yet
-trueAnomalyatTe0=0;       %% not used yet
+trueAnomalyAtTe0=0;       %% not used yet
 
 %% orbital environment
 windpressure=rho/2*v^2;%% pascal
@@ -78,6 +78,7 @@ betas =0:deltaAngle:180; %% pitch
 gammas=0:deltaAngle:360; %% yaw
 aeroscalingfactor=1; sunscalingfactor=10; %% these are for visualization of vectors only
 totalforcevector = totalforcevectorfunction(wind,sunlight,panels(1),panels(2),panels(3),alphas,betas,gammas,panelSurface,aeroscalingfactor,solarpressure,sunscalingfactor,windpressure, deltaAngle);
+input('a')
 %% parameters for visualization
 %! there are more parameters in the visualization function
 VIS_C=100;                %% scales deployment, formation size
@@ -229,14 +230,16 @@ function [ssttemptemp,controlvector,flops]=hcwequation2(IR,P,A,B,   deltat,     
   controlvector=-IR*B'*P*e;
   flops=flops+1e6;
 
-  [forcevector,alphaopt,betaopt,gammaopt]=findBestAerodynamicAngles(totalforcevector,controlvector,alphas,betas,gammas,oldAlphaOpt,oldBetaOpt,oldGammaOpt);
+  [forcevector,alphaOpt,betaOpt,gammaOpt]=findBestAerodynamicAngles(totalforcevector,controlvector,alphas,betas,gammas,oldAlphaOpt,oldBetaOpt,oldGammaOpt);
   %! add computational relaxation here
   
   %! add vehicle inertia here
-  
+  controlvector'/sqrt(controlvector(1)^2+controlvector(2)^2+controlvector(3)^2)
+  forcevector'/sqrt(forcevector(1)^2+forcevector(2)^2+forcevector(3)^2)
+  fprintf('-------')
   %% solve ODE with backward Euler step
   ssttemptemp(1:6)=(A*sst0(1:6)+B*forcevector)*deltat+sst0(1:6);
-  ssttemptemp(7:9)=[alphaopt betaopt gammaopt]';
+  ssttemptemp(7:9)=[alphaOpt betaOpt gammaOpt]';
   flops=flops+1e6; 
 end
 
