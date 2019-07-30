@@ -57,8 +57,8 @@ ejectionVelocity=0.5; % m/s
 timeBetweenEjections=10; % in s
 
 %% simulation constants
-totalTime=6*2*pi/omega ;    %% in s
-startSecondPhase=14*2*pi/omega;     %% in s
+totalTime=8*2*pi/omega ;    %% in s
+startSecondPhase=4*2*pi/omega;     %% in s
 currentTime=0;          %% now, should usually be 0
 time=[0];
 compStep=60;            %% computational step size in s
