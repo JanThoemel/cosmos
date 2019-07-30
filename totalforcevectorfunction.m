@@ -2,7 +2,7 @@ function totalforcevector=totalforcevectorfunction(wind,sunlight,noxpanels,noypa
   rotspeed=10;draw=0;
   %% %% the possible forcevectors
   %% define filename convenction
-  filename=strcat('tfv_panels',int2str(nozpanels),int2str(noxpanels),int2str(noypanels),'_wind',num2str(solarpressure,'%1.1e'),int2str(wind(1)),int2str(wind(2)),int2str(wind(3)),'_sun',num2str(windpressure,'%1.1e'),int2str(sunlight(1)),int2str(sunlight(2)),int2str(sunlight(3)),'_deltaangle',int2str(deltaangle),'.mat');
+  filename=strcat('tfv_panels',int2str(nozpanels),int2str(noxpanels),int2str(noypanels),'_wind',num2str(windpressure,'%1.1e'),int2str(wind(1)),int2str(wind(2)),int2str(wind(3)),'_sun',num2str(solarpressure,'%1.1e'),int2str(sunlight(1)),int2str(sunlight(2)),int2str(sunlight(3)),'_deltaangle',int2str(deltaangle),'.mat');
   %% does this file exists already
   if isfile(filename)
     fprintf('\nloading file');
