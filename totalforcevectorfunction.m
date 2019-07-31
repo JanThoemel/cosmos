@@ -6,11 +6,11 @@ function totalforcevector = totalforcevectorfunction(wind,sunlight,noxpanels,noy
   filename=strcat('tfv_panels',int2str(noxpanels),int2str(noypanels),int2str(nozpanels),'_wind',num2str(windpressure,'%1.1e'),int2str(wind(1)),int2str(wind(2)),int2str(wind(3)),'_sun',num2str(solarpressure,'%1.1e'),int2str(sunlight(1)),int2str(sunlight(2)),int2str(sunlight(3)),'_deltaangle',int2str(deltaangle),'.mat');
   %% does this file exists already
   if isfile(filename)
-    fprintf('\nloading file');
+    fprintf('\nfile with aerodynamics exist, loading it');
     load(filename,'totalforcevector')
-    fprintf('\ndone\n');
+    fprintf(' - done\n');
   else
-    fprintf('\n computing forces');  
+    fprintf('\n computing aerodynamics');  
     %% must be in dimensions of force, i.e. N
     axislength=1.1*max([windpressure*panelsurface*aeroscalingfactor solarpressure*panelsurface*sunscalingfactor]);
     Ry90=roty(90);
@@ -233,7 +233,7 @@ function totalforcevector = totalforcevectorfunction(wind,sunlight,noxpanels,noy
         subplot(2,1,2)
         plot(alphas,aerodragcoef,alphas,aeroliftcoef);
         legend('drag','lift');grid on;
-    fprintf('\ndone\n');
+    fprintf(' - done\n');
     save(filename,'totalforcevector')
   end  
 end

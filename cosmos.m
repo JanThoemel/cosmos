@@ -12,7 +12,7 @@
 %% 09/05/2019:  aerodynamics in local-x direction,i.e. pitch implemented, correctness to be checked
 %%
 %% todo:
-%% merge X and angles into state vector sst
+%% move drag of master out of slave drag computation
 %% implement J2
 %% arbitrary inclinations in visualization
 %% clean up of code
@@ -20,6 +20,27 @@
 %% SGP4 
 %% compute moment coefficients and moments
 
+%% meritfactors, computational steps size, control length and others impact stability of control
+
+%% conditions for IRS's Discoverers mission:
+% r0=6778.137         %% km
+% inclinition=10;     %% degree
+% RAAN=45;            %% degree
+% argumentOfPerigee=130;  %% degree
+% truAnomaly=45;      %% degree
+% mass=10             %% kg
+% panelsurface=2*1.1  %% m
+%% position of deputy
+% z=82.5;             %% is x in publication
+% x=-930.46;          %% is y in publication
+% y=55.27;            %% is z in publication
+% w=-0.17;            %% is u in publication
+% u=-0.04;            %% is v in publication
+% v=0.29;             %% is w in publication
+
+%% inplane maneuver is successful if deputy is within  10m in z-direction (x in publication) and 15m in x direction (y in publication).
+%% out-of-plane maneuver is success if y-direction (z in publication) distance is 1m and velocity is 1cm/s (I dont know what velocity)
+%% maneuver duration for the case describe is: 4.2+14.2
 %% Matlab parameters
 clear all;close all;clc;%format long;
 oldpath = path; path(oldpath,'..\matlabfunctions\')
@@ -58,17 +79,18 @@ timeBetweenEjections=10; % in s
 
 %% simulation constants
 totalTime=8*2*pi/omega ;    %% in s
-startSecondPhase=4*2*pi/omega;     %% in s
+startSecondPhase=1000*2*pi/omega;     %% in s
 currentTime=0;          %% now, should usually be 0
 time=[0];
 compStep=60;            %% computational step size in s
-lengthControlLoop=300;  %% in s
+lengthControlLoop=900;  %% in s
 timetemp=0:compStep:lengthControlLoop; %% duration and interpolation timestep for each control loop. ODE45 chooses its one optimal timestep. 150s total duration is consistent with Ivanov
 fprintf('\nnumber of float variables for each control loop: %d, size %f kbyte',size(timetemp,2)*(1+6+6+3)+6+1,(size(timetemp,2)*(1+6+6+3)+6+1)*4/1024); %% size of time vector, state vector, desired state vector and anglevector, C and omega of analytical solution
 
 %% desired statevector constants
 AAA=100;
-DDD=115;
+%DDD=115;
+DDD=2*115;
 sstDesired=zeros(6,ns,size(timetemp,2)); %% columns: desired statevector per each satellite
 
 %% forcevector determination
@@ -81,7 +103,7 @@ totalforcevector = totalforcevectorfunction(wind,sunlight,panels(1),panels(2),pa
 
 %% parameters for visualization
 %! there are more parameters in the visualization function
-VIS_C=100;                %% scales deployment, formation size
+VIS_C=200;                %% scales deployment, formation size
 VIS_ACC_FAC=120;        %% speeds up the Google Earth visualization
 VIS_STEP=60;            %% visualization step size in s
 fprintf('\nduration of movie without US %2.1f min\n',totalTime/VIS_ACC_FAC/60) %% length of animation in min: totaltime/vis_step/accelerationfactor/60
@@ -96,7 +118,8 @@ utemp=zeros(3,ns,size(timetemp,2));
 etemp=zeros(6,ns,size(timetemp,2));
 
 for i=1:ns
-    ssttemp(1,i,1)=(i-1)*ejectionVelocity*timeBetweenEjections; %% x position
+    %ssttemp(1,i,1)=(i-1)*ejectionVelocity*timeBetweenEjections; %% x position
+    ssttemp(1,2,1)=200 ; %% x position for rendezvous
     ssttemp(4,i,1)=0;   %ejectionvelocity; %% u velocity
     ssttemp(7,i,1)=0;   %% alpha
     ssttemp(8,i,1)=0;   %% beta
@@ -110,13 +133,18 @@ for i=1:ns
     %sst(:,2)=[15 0 0 0.005 0.015 0.015]';
 end
 %! set sst for initial step right
-
+sst(:,:,1)=ssttemp(:,:,1);
 %% solving the ODE for each control step
 while currentTime<totalTime    
   if currentTime<startSecondPhase    %% initial desired vector
     %% desired statevector II
 
-    sstDesired(1,2,:)=DDD;
+    %sstDesired(1,2,:)=DDD;
+    %%sstDesired(2,2,:)=AAA*sqrt(3)*sin(omega*(currentTime+timetemp));
+
+    sstDesired(1,2,:)=0.1; %% for rendezvous
+
+    %sstDesired(1,3,:)=-DDD;
 
     %xd(1,1,:)=-C3*DDD;
     %%xd(2,2,:)=C3*AAA*sqrt(3)*sin(omega*(currenttime+tspan));
@@ -134,6 +162,7 @@ while currentTime<totalTime
     %% desired statevector II
 
     sstDesired(1,2,:)=sc*DDD;
+    %sstDesired(1,3,:)=-sc*DDD;
     
     %xd(1,1,:)=-sc*C3*DDD;
     %xd(2,2,:)=sc*C3*AAA*sqrt(3)*sin(omega*(currenttime+timetemp));
@@ -180,21 +209,10 @@ while currentTime<totalTime
   fprintf('simulated time %3.0f/%3.0f min (%3.0f%%)', currentTime/60, totalTime/60,currentTime/totalTime*100);
 end
 
-%for i=1:ns %% reset angles for first timestep for better visualization %! this could be done for several timesteps as some kind of waiting period before control kicks in
-%    angles(:,i,1)=[0 0 0]';
-%end
-
-figure
-  plot(time,squeeze(e(1,2,:)));hold on;
-  plot(time,squeeze(e(2,2,:)));hold on;
-  plot(time,squeeze(e(3,2,:)));hold on;
-  plot(time,squeeze(e(4,2,:)));hold on;
-  plot(time,squeeze(e(5,2,:)));hold on;
-  plot(time,squeeze(e(6,2,:)));hold on;
-  legend;
-
 %% results' plotting
-plotting(sst(7:9,:,:),sst(1:6,:,:),time,ns,omega,u)
+plotting(sst(7:9,:,:),sst(1:6,:,:),time,ns,omega,u,e);
+pause(5);
+
 
 %% convert from classical ZYZ Euler angles to Google Earth Euler angles ZYX
 anglesGE=squeeze(sst(7:9,:,:));
@@ -206,9 +224,21 @@ for j=1:size(anglesGE,3)
 end
 
 %% map on globe and create kml file
-%visualization(ns,time,VIS_C*squeeze(sst(1,:,:)),VIS_C*squeeze(sst(2,:,:)),VIS_C*squeeze(sst(3,:,:)),altitude,anglesGE, modelfilename,radiusOfEarth,mu,VIS_STEP,VIS_ACC_FAC)
+visualization(ns,time,VIS_C*squeeze(sst(1,:,:)),VIS_C*squeeze(sst(2,:,:)),VIS_C*squeeze(sst(3,:,:)),altitude,anglesGE, modelfilename,radiusOfEarth,mu,VIS_STEP,VIS_ACC_FAC)
 
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -830,67 +860,78 @@ function [P,IR,A,B]=riccatiequation(omega)
  [P,L,G] = care(A,B,Q,R,S,E2);
 end
 
-function plotting(angles,sst,ttime,ns,omega,u)
-    figure
-       subplot(3,3,1)%% roll
-         for i=1:ns
-           plot(squeeze(ttime/2/pi*omega),squeeze(angles(1,i,:)));hold on
-           names(i)=[{strcat('sat',int2str(i))}];
-         end
-        ylabel('roll angle [deg]');xlabel('no. of orbits');grid on;hold off;legend(names);
-        subplot(3,3,2)%% pitch
-        for i=1:ns
-           plot(squeeze(ttime/2/pi*omega),squeeze(angles(2,i,:)));hold on
-        end
-        ylabel('pitch angle [deg]');xlabel('no. of orbits');grid on;hold off;
-        subplot(3,3,3)%%yaw
-        for i=1:ns
-           plot(squeeze(ttime/2/pi*omega),squeeze(angles(3,i,:)));hold on
-        end
-        ylabel('yaw angle [deg]');xlabel('no. of orbits');grid on;hold off
-        subplot(3,3,4)%%x
-        for i=1:ns
-           plot(squeeze(ttime/2/pi*omega),squeeze(sst(1,i,:)));hold on
-        end
-        ylabel('x [m]');xlabel('no. of orbits');grid on;hold off
-        subplot(3,3,5)%%y
-        for i=1:ns
-           plot(squeeze(ttime/2/pi*omega),squeeze(sst(2,i,:)));hold on
-        end
-        ylabel('y [m]');xlabel('no. of orbits');grid on;hold off
-        subplot(3,3,6)%%z
-        for i=1:ns
-           plot(squeeze(ttime/2/pi*omega),squeeze(sst(3,i,:)));hold on
-        end
-        ylabel('z [m]');xlabel('no. of orbits');grid on;hold off
-        subplot(3,3,7)%%u1
-        for i=1:ns
-           plot(squeeze(ttime/2/pi*omega),squeeze(u(1,i,:)));hold on
-        end
-        ylabel('u1');xlabel('no. of orbits');grid on;hold off
-        subplot(3,3,8)%%u2
-        for i=1:ns
-           plot(squeeze(ttime/2/pi*omega),squeeze(u(2,i,:)));hold on
-        end
-        ylabel('u2');xlabel('no. of orbits');grid on;hold off
-        subplot(3,3,9)%%u3
-        for i=1:ns
-           plot(squeeze(ttime/2/pi*omega),squeeze(u(3,i,:)));hold on
-        end
-        ylabel('u3');xlabel('no. of orbits');grid on;hold off
-        
-    figure
-        for i=1:ns
-          plot3(squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'-');hold on
-          names(i)=[{strcat('sat',int2str(i))}];
-        end
-        xlabel('X [m]');ylabel('Y [m]');zlabel('Z [m]');legend(names);grid on;hold off;axis equal;
-        if 0
-          axis(sc*[-35e3 35e3 -35e3 35e3 -35e3 35e3])
-          xticks(sc*[-20e3 0 20e3]);yticks(sc*[-20e3 0 20e3]);zticks(sc*[-20e3 0 20e3]);
-          set(gcf,'PaperUnits', 'inches','PaperPosition', [0 0 2 2]) ;
-          fprintf('2by2','-dpng','-r0')
-        end
+function plotting(angles,sst,time,ns,omega,u,e)
+
+  figure
+    plot(time,squeeze(e(1,2,:)));hold on;
+    plot(time,squeeze(e(2,2,:)));hold on;
+    plot(time,squeeze(e(3,2,:)));hold on;
+    plot(time,squeeze(e(4,2,:)));hold on;
+    plot(time,squeeze(e(5,2,:)));hold on;
+    plot(time,squeeze(e(6,2,:)));hold on;
+    legend;
+
+
+  figure
+   subplot(3,3,1)%% roll
+     for i=1:ns
+       plot(squeeze(time/2/pi*omega),squeeze(angles(1,i,:)));hold on
+       names(i)=[{strcat('sat',int2str(i))}];
+     end
+    ylabel('roll angle [deg]');xlabel('no. of orbits');grid on;hold off;legend(names);
+    subplot(3,3,2)%% pitch
+    for i=1:ns
+       plot(squeeze(time/2/pi*omega),squeeze(angles(2,i,:)));hold on
+    end
+    ylabel('pitch angle [deg]');xlabel('no. of orbits');grid on;hold off;
+    subplot(3,3,3)%%yaw
+    for i=1:ns
+       plot(squeeze(time/2/pi*omega),squeeze(angles(3,i,:)));hold on
+    end
+    ylabel('yaw angle [deg]');xlabel('no. of orbits');grid on;hold off
+    subplot(3,3,4)%%x
+    for i=1:ns
+       plot(squeeze(time/2/pi*omega),squeeze(sst(1,i,:)));hold on
+    end
+    ylabel('x [m]');xlabel('no. of orbits');grid on;hold off
+    subplot(3,3,5)%%y
+    for i=1:ns
+       plot(squeeze(time/2/pi*omega),squeeze(sst(2,i,:)));hold on
+    end
+    ylabel('y [m]');xlabel('no. of orbits');grid on;hold off
+    subplot(3,3,6)%%z
+    for i=1:ns
+       plot(squeeze(time/2/pi*omega),squeeze(sst(3,i,:)));hold on
+    end
+    ylabel('z [m]');xlabel('no. of orbits');grid on;hold off
+    subplot(3,3,7)%%u1
+    for i=1:ns
+       plot(squeeze(time/2/pi*omega),squeeze(u(1,i,:)));hold on
+    end
+    ylabel('u1');xlabel('no. of orbits');grid on;hold off
+    subplot(3,3,8)%%u2
+    for i=1:ns
+       plot(squeeze(time/2/pi*omega),squeeze(u(2,i,:)));hold on
+    end
+    ylabel('u2');xlabel('no. of orbits');grid on;hold off
+    subplot(3,3,9)%%u3
+    for i=1:ns
+       plot(squeeze(time/2/pi*omega),squeeze(u(3,i,:)));hold on
+    end
+    ylabel('u3');xlabel('no. of orbits');grid on;hold off
+
+  figure
+    for i=1:ns
+      plot3(squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'-');hold on
+      names(i)=[{strcat('sat',int2str(i))}];
+    end
+    xlabel('X [m]');ylabel('Y [m]');zlabel('Z [m]');legend(names);grid on;hold off;axis equal;
+    if 0
+      axis(sc*[-35e3 35e3 -35e3 35e3 -35e3 35e3])
+      xticks(sc*[-20e3 0 20e3]);yticks(sc*[-20e3 0 20e3]);zticks(sc*[-20e3 0 20e3]);
+      set(gcf,'PaperUnits', 'inches','PaperPosition', [0 0 2 2]) ;
+      fprintf('2by2','-dpng','-r0')
+    end
 end    
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
