@@ -68,18 +68,20 @@ sunlight=sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2);
 
 %% formation flight constants
 ns=2;                   %% number of satellites
-sc=2;                   %% scale for second configuration; scales also figure
+sc=100;                   %% scale for second configuration; scales also figure
 
 %% satelliteshapeproperties, number of 10cmx10cm faces to x,y,z(body coordinates, normally aligned with):
 panels=[0 0 1]; 
 panelSurface=0.01; %m^2
+%refsurf=panelSurface*panels(1);
+refSurf=panelSurface;
 modelfilename=strcat('figures',filesep,'cocu.dae');
 ejectionVelocity=0.5; % m/s
 timeBetweenEjections=10; % in s
 
 %% simulation constants
-totalTime=8*2*pi/omega ;    %% in s
-startSecondPhase=1000*2*pi/omega;     %% in s
+totalTime=16*2*pi/omega ;    %% in s
+startSecondPhase=8*2*pi/omega;     %% in s
 currentTime=0;          %% now, should usually be 0
 time=[0];
 compStep=60;            %% computational step size in s
@@ -87,29 +89,28 @@ lengthControlLoop=900;  %% in s
 timetemp=0:compStep:lengthControlLoop; %% duration and interpolation timestep for each control loop. ODE45 chooses its one optimal timestep. 150s total duration is consistent with Ivanov
 fprintf('\nnumber of float variables for each control loop: %d, size %f kbyte',size(timetemp,2)*(1+6+6+3)+6+1,(size(timetemp,2)*(1+6+6+3)+6+1)*4/1024); %% size of time vector, state vector, desired state vector and anglevector, C and omega of analytical solution
 
-%% desired statevector constants
-AAA=100;
-%DDD=115;
-DDD=2*115;
-sstDesired=zeros(6,ns,size(timetemp,2)); %% columns: desired statevector per each satellite
+%% desired statevector functions
+sstDesiredFunction=@IRSRendezvous;
+%sstDesiredFunction=@IvanovFormationFlight
 
 %% forcevector determination
 deltaAngle=15;
 alphas=0:deltaAngle:360; %% roll
 betas =0:deltaAngle:180; %% pitch 
 gammas=0:deltaAngle:360; %% yaw
-aeroscalingfactor=1; sunscalingfactor=10; %% these are for visualization of vectors only
+aeroscalingfactor=1; sunscalingfactor=1; %% these are for visualization of vectors only
 totalforcevector = totalforcevectorfunction(wind,sunlight,panels(1),panels(2),panels(3),alphas,betas,gammas,panelSurface,aeroscalingfactor,solarpressure,sunscalingfactor,windpressure, deltaAngle);
 
 %% parameters for visualization
 %! there are more parameters in the visualization function
+DO_VIZ=0;               %% do you want to create a google Earth/kml file/vizualization ? 0-no 1-yes
 VIS_C=200;                %% scales deployment, formation size
 VIS_ACC_FAC=120;        %% speeds up the Google Earth visualization
 VIS_STEP=60;            %% visualization step size in s
 fprintf('\nduration of movie without US %2.1f min\n',totalTime/VIS_ACC_FAC/60) %% length of animation in min: totaltime/vis_step/accelerationfactor/60
 
 u=zeros(3,ns);          %% control vector
-e=zeros(6,ns);          %% control vector
+e=zeros(6,ns);          %% error vector
 
 %% initial conditions of ODE
 sst=zeros(9,ns);        %% columns: statevector per each satellite
@@ -135,54 +136,16 @@ end
 %! set sst for initial step right
 sst(:,:,1)=ssttemp(:,:,1);
 %% solving the ODE for each control step
-while currentTime<totalTime    
-  if currentTime<startSecondPhase    %% initial desired vector
-    %% desired statevector II
-
-    %sstDesired(1,2,:)=DDD;
-    %%sstDesired(2,2,:)=AAA*sqrt(3)*sin(omega*(currentTime+timetemp));
-
-    sstDesired(1,2,:)=0.1; %% for rendezvous
-
-    %sstDesired(1,3,:)=-DDD;
-
-    %xd(1,1,:)=-C3*DDD;
-    %%xd(2,2,:)=C3*AAA*sqrt(3)*sin(omega*(currenttime+tspan));
-    %xd(2,2,:)=C3*AAA*sqrt(3)*sin(omega*(currenttime+timetemp));
-    %xd(1,3,:)=C3*DDD;
-
-    %xd(1,3,:)=CCC*2*AAA*cos(omega*(currenttime+tspan)-acos(1/3));
-    %xd(2,3,:)=CCC*AAA*sqrt(3)*sin(omega*(currenttime+tspan));
-    %xd(3,3,:)=CCC*AAA*sin(omega*(currenttime+tspan)-acos(1/3));
-    
-    %xd(1,4,:)=CCC*2*AAA*cos(omega*(currenttime+tspan));
-    %xd(2,4,:)=CCC*AAA*sqrt(3)*sin(omega*(currenttime+tspan)+acos(1/3));
-    %xd(3,4,:)=CCC*AAA*sin(omega*(currenttime+tspan));
-  else                      %% switch to new desired statevector
-    %% desired statevector II
-
-    sstDesired(1,2,:)=sc*DDD;
-    %sstDesired(1,3,:)=-sc*DDD;
-    
-    %xd(1,1,:)=-sc*C3*DDD;
-    %xd(2,2,:)=sc*C3*AAA*sqrt(3)*sin(omega*(currenttime+timetemp));
-    %xd(1,3,:)=sc*C3*DDD;
-    
-    %xd(1,3,:)=sc*C3*2*AAA*cos(omega*(currenttime+tspan)-acos(-3/3));
-    %xd(2,3,:)=sc*C3*AAA*sqrt(3)*sin(omega*(currenttime+tspan));
-    %xd(3,3,:)=sc*C3*AAA*sin(omega*(currenttime+tspan)-acos(1/3));
-    
-    %xd(1,4,:)=sc*C3*2*AAA*cos(omega*(currenttime+tspan)-acos(5/3));
-    %xd(2,4,:)=sc*C3*AAA*sqrt(3)*sin(omega*(currenttime+tspan)+acos(1/3));
-    %xd(3,4,:)=sc*C3*AAA*sin(omega*(currenttime+tspan));   
-  end
+while currentTime<totalTime
+  %% Desired state vector
+    sstDesiredtemp=sstDesiredFunction(currentTime+timetemp,ns); %% for rendezvous  
   %% set initial condition (for statevector) for new ODE solver loop
   %% apply disturbances
   flops=0;
   for j=1:size(timetemp,2)-1 %% for each timestep within ODE solver loop
     for i=1:ns
       %% compute error
-      etemp(:,i,j)=ssttemp(1:6,i,j)-sstDesired(:,i,j);
+      etemp(:,i,j)=ssttemp(1:6,i,j)-sstDesiredtemp(1:6,i,j);
       flops=flops+6;
       %fprintf('\n %e %e %e %e %e %',e(1,i,j),e(2,i,j),e(3,i,j),e(4,i,j),e(5,i,j),e(6,i,j));
     end
@@ -190,7 +153,7 @@ while currentTime<totalTime
     %x(:,1,j+1)=[0 0 0 0 0 0]';
     %utemp(:,1,j+1)=[-1.2 0 0]';
     for i=2:ns %% for each satellite but not the master satellite
-        [ssttemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),ssttemp(:,i,j),etemp(:,i,j),flops,rho,v,alphas,betas,gammas,totalforcevector,ssttemp(7,i,j),ssttemp(8,i,j),ssttemp(9,i,j));
+        [ssttemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),ssttemp(:,i,j),etemp(:,i,j),flops,windpressure,alphas,betas,gammas,totalforcevector,ssttemp(7,i,j),ssttemp(8,i,j),ssttemp(9,i,j),refSurf);
     end 
   end
   ssttemp(:,:,1)=ssttemp(:,:,end);
@@ -203,7 +166,7 @@ while currentTime<totalTime
   %% print progress of iterations to screen
   %fprintf('\n flops %d',flops);
   if currentTime>0
-    fprintf('\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b')
+    fprintf('\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b')
   end
   currentTime=time(end);
   fprintf('simulated time %3.0f/%3.0f min (%3.0f%%)', currentTime/60, totalTime/60,currentTime/totalTime*100);
@@ -224,9 +187,9 @@ for j=1:size(anglesGE,3)
 end
 
 %% map on globe and create kml file
-visualization(ns,time,VIS_C*squeeze(sst(1,:,:)),VIS_C*squeeze(sst(2,:,:)),VIS_C*squeeze(sst(3,:,:)),altitude,anglesGE, modelfilename,radiusOfEarth,mu,VIS_STEP,VIS_ACC_FAC)
-
-
+if DO_VIZ
+  visualization(ns,time,VIS_C*squeeze(sst(1,:,:)),VIS_C*squeeze(sst(2,:,:)),VIS_C*squeeze(sst(3,:,:)),altitude,anglesGE, modelfilename,radiusOfEarth,mu,VIS_STEP,VIS_ACC_FAC)
+end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -246,25 +209,67 @@ visualization(ns,time,VIS_C*squeeze(sst(1,:,:)),VIS_C*squeeze(sst(2,:,:)),VIS_C*
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [ssttemptemp,controlvector,flops]=hcwequation2(IR,P,A,B,   deltat,                sst0,          e,       flops,rho,v,alphas,betas,gammas,totalforcevector,oldAlphaOpt,oldBetaOpt,oldGammaOpt)
-    %sttemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),ssttemp(:,i,j),e(:,i,j),flops,rho,v,alpha,beta,gamma,totalforcevector,ssttemp(7,i,j),ssttemp(8,i,j),ssttemp(9,i,j));
+function sstDesired=IRSRendezvous(timetemptemp,ns)
+%% only one independent satellite
+  sstDesired=zeros(9,ns,size(timetemptemp,2));
+  for i=1:size(timetemptemp,2);
+    sstDesired(1,2,:)=0.1;
+  end
+end
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%% HCW equation
-  
-  satmass=2; %% kg
-  S=0.1^2; %% m2
-  k=1/satmass*rho*v^2*S;
+function sstDesired=IvanovFormationFlight(timetemptemp,ns)
+%% analytical solution according to Ivanov
+  AAA=100;
+  DDD=115;
+
+  xd(1,1,:)=-C3*DDD;
+  xd(2,2,:)=C3*AAA*sqrt(3)*sin(omega*(currenttime+tspan));
+  xd(2,2,:)=C3*AAA*sqrt(3)*sin(omega*(currenttime+timetemp));
+  xd(1,3,:)=C3*DDD;
+
+  xd(1,3,:)=CCC*2*AAA*cos(omega*(currenttime+tspan)-acos(1/3));
+  xd(2,3,:)=CCC*AAA*sqrt(3)*sin(omega*(currenttime+tspan));
+  xd(3,3,:)=CCC*AAA*sin(omega*(currenttime+tspan)-acos(1/3));
+
+  xd(1,4,:)=CCC*2*AAA*cos(omega*(currenttime+tspan));
+  xd(2,4,:)=CCC*AAA*sqrt(3)*sin(omega*(currenttime+tspan)+acos(1/3));
+  xd(3,4,:)=CCC*AAA*sin(omega*(currenttime+tspan));
+    
+
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,   deltat,                sst0,          e,       flops,windpressure,alphas,betas,gammas,totalforcevector,oldAlphaOpt,oldBetaOpt,oldGammaOpt,refSurf)
+%% HCW equation 
     
   %% compute control vector
-  controlvector=-IR*B'*P*e;
+  controlVector=-IR*B'*P*e;
   flops=flops+1e6;
+  forceVectorOfMaster=-1/2*1.2*windpressure*refSurf*[1 0 0]';
+  %forceVectorOfMaster'
+  %forceVector'
+  %input('a')
+  %relForceVector=forceVector;%-forceVectorOfMaster;
+  %relForceVector'
+  %forceVectorOfMaster'
+  for k=1:size(gammas,2)
+    for j=1:size(betas,2)
+      for i=1:size(alphas,2)
+        usedTotalForceVector(:,i,j,k)=totalforcevector(:,i,j,k)-forceVectorOfMaster(:);
+      end
+    end
+  end
+  [forceVector,alphaOpt,betaOpt,gammaOpt]=findBestAerodynamicAngles(usedTotalForceVector,controlVector,alphas,betas,gammas,oldAlphaOpt,oldBetaOpt,oldGammaOpt);
 
-  [forcevector,alphaOpt,betaOpt,gammaOpt]=findBestAerodynamicAngles(totalforcevector,controlvector,alphas,betas,gammas,oldAlphaOpt,oldBetaOpt,oldGammaOpt);
   %! add computational relaxation here
   
   %! add vehicle inertia here
   %% solve ODE with backward Euler step
-  ssttemptemp(1:6)=(A*sst0(1:6)+B*forcevector)*deltat+sst0(1:6);
+  ssttemptemp(1:6)=(A*sst0(1:6)+B*forceVector)*deltat+sst0(1:6);
   ssttemptemp(7:9)=[alphaOpt betaOpt gammaOpt]';
   flops=flops+1e6; 
 end
