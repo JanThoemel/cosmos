@@ -2,14 +2,14 @@ function totalforcevector = totalforcevectorfunction(wind,sunlight,noxpanels,noy
   rotspeed=30;draw=0;
   %% %% the possible forcevectors
   %% define filename convenction
-  filename=strcat('tfv_panels',int2str(noxpanels),int2str(noypanels),int2str(nozpanels),'_wind',num2str(windPressure,'%1.1e'),int2str(wind(1)),int2str(wind(2)),int2str(wind(3)),'_sun',num2str(solarPressure,'%1.1e'),int2str(sunlight(1)),int2str(sunlight(2)),int2str(sunlight(3)),'_deltaangle',int2str(deltaAngle),'.mat');
+  filename=strcat('tfv_panels',int2str(noxpanels),int2str(noypanels),int2str(nozpanels),'_wind',num2str(windPressure,'%1.1e'),int2str(wind(1)),int2str(wind(2)),int2str(wind(3)),'_sun',num2str(solarPressure,'%1.1e'),int2str(sunlight(1)),int2str(sunlight(2)),int2str(sunlight(3)),'_deltaA',int2str(deltaAngle),'_panelSurf',num2str(panelSurface,'%1.1e') ,'.mat');
   %% does this file exists already
   if isfile(filename)
-    fprintf('\nfile with aerodynamics exist, loading it');
+    fprintf('file with aerodynamics exists, loading it');
     load(filename,'totalforcevector')
     fprintf(' - done\n');
   else
-    fprintf('\n computing aerodynamics');  
+    fprintf('computing aerodynamics');  
     %% must be in dimensions of force, i.e. N
     axislength=1.1*max([windPressure*panelSurface*aeroScalingFactor solarPressure*panelSurface*sunScalingFactor]);
     Ry90=roty(90);

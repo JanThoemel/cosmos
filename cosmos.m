@@ -22,26 +22,25 @@
 %% meritfactors, computational steps size, control length and others impact stability of control
 
 %% Matlab parameters
-clear all;close all;clc;%format long;
+clear all;close all;clc;format shortEng;
 oldpath = path; path(oldpath,'..\matlabfunctions\')
 
 %% constants
 modelfilename=strcat('figures',filesep,'cocu.dae');
 
-
 %% simulation time constants I
 currentTime=0;                  %% now, should usually be 0
 time=[0];
-compStep=1;                    %% computational step size in s
+compStep=15;                     %% computational step size in s
 lengthControlLoop=900;          %% in s
 timetemp=0:compStep:lengthControlLoop; %% duration and interpolation timestep for each control loop
 %fprintf('\nnumber of float variables for each control loop: %d, size %f kbyte',size(timetemp,2)*(1+6+6+3)+6+1,(size(timetemp,2)*(1+6+6+3)+6+1)*4/1024); %% size of time vector, state vector, desired state vector and anglevector, C and omega of analytical solution
 
 %% initial conditions and desired statevector functions
-%sstInitialFunction=@IRSRendezvousInitial;
-%sstDesiredFunction=@IRSRendezvousDesired;
-sstDesiredFunction=@IvanovFormationFlightDesired;
-sstInitialFunction=@IvanovFormationFlightInitial;
+sstInitialFunction=@IRSRendezvousInitial;
+sstDesiredFunction=@IRSRendezvousDesired;
+%sstDesiredFunction=@IvanovFormationFlightDesired;
+%sstInitialFunction=@IvanovFormationFlightInitial;
 
 %% initial conditions of ODE
 [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,omega,mu,satelliteMass,panelSurface]=sstInitialFunction(currentTime+timetemp); 
@@ -49,7 +48,7 @@ sstInitialFunction=@IvanovFormationFlightInitial;
 [P,IR,A,B]=riccatiequation(omega);
 
 %% simulation time constants II
-totalTime=4*2*pi/omega ;                  %% in s
+totalTime=15*2*pi/omega ;                  %% in s
 
 %% non-gravitational perturbations
 windpressure=rho/2*v^2;                   %% pascal
@@ -76,7 +75,7 @@ VIS_DO=0;                   %% do you want to create a google Earth/kml file/viz
 VIS_SCALE=100;              %% scales deployment, formation size
 VIS_ACC_FACTOR=120;         %% speeds up the Google Earth visualization
 VIS_STEP=60;                %% visualization step size in s
-fprintf('\nduration of movie without US %2.1f min\n',totalTime/VIS_ACC_FACTOR/60) %% length of animation in min: totaltime/vis_step/accelerationfactor/60
+fprintf('duration of movie without upper stage flight: %2.1f min\n',totalTime/VIS_ACC_FACTOR/60) %% length of animation in min: totaltime/vis_step/accelerationfactor/60
 
 %% some initializations
 u=zeros(3,ns);              %% control vector
@@ -107,7 +106,7 @@ while currentTime<totalTime
     %x(:,1,j+1)=[0 0 0 0 0 0]';
     %utemp(:,1,j+1)=[-1.2 0 0]';
     for i=2:ns %% for each satellite but not the master satellite
-        [sstTemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),sstTemp(:,i,j),etemp(:,i,j),flops,windpressure,alphas,betas,gammas,totalforcevector,sstTemp(7,i,j),sstTemp(8,i,j),sstTemp(9,i,j),refSurf);
+        [sstTemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),sstTemp(:,i,j),etemp(:,i,j),flops,windpressure,alphas,betas,gammas,totalforcevector,sstTemp(7,i,j),sstTemp(8,i,j),sstTemp(9,i,j),refSurf,satelliteMass);
     end 
   end
   sstTemp(:,:,1)=sstTemp(:,:,end);
@@ -185,38 +184,39 @@ function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,omega,mu,satelliteMass,
   %% only one independent satellite
   ns=2;
   satelliteMass=10;
-  altitude=340000;              %% in m
   argumentOfPerigeeAtTe0=0;     %% not used yet
   trueAnomalyAtTe0=0;           %% not used yet
-  panelSurface=1.1;             %% m^2  
   %% other constants
-  [rho,v,radiusOfEarth,mu]=orbitalproperties(500000);
-  altitude=radiusOfEarth-6778137;
+  [~,~,radiusOfEarth,~,omega]=orbitalproperties(500000);
+  altitude=6778137-radiusOfEarth;
   [rho,v,radiusOfEarth,mu]=orbitalproperties(altitude);
   r0=radiusOfEarth+altitude;    %% in m
-  omega=sqrt(mu/r0^3);          %% mean motion %! could be moved to orbitalproperties
 
   %% satelliteshapeproperties, number of 10cmx10cm faces to x,y,z(body coordinates, normally aligned with):
   panels=[0 0 2]; 
-  %startSecondPhase=8*2*pi/omega;  %% in s
+  panelSurface=1.1;                %% [m^2]  
+  %startSecondPhase=8*2*pi/omega;   %% [s]
   sstTemp=zeros(9,ns,size(timetemptemp,2));
   %% initial condition
-  sstTemp(1,2,1)=-930.46 ;          %% x  for rendezvous
-  sstTemp(2,2,1)=55.27 ;            %% y for rendezvous
-  sstTemp(3,2,1)=82.5 ;             %% z for rendezvous
-  sstTemp(4,2,1)=-0.04 ;            %% u n for rendezvous
-  sstTemp(5,2,1)=0.29 ;             %% v  or rendezvous
-  sstTemp(6,2,1)=0.17 ;             %% w for rendezvous
+  sstTemp(1,2,1)=-930.46;          %% x for rendezvous
+  sstTemp(2,2,1)=0;%  55.27;          %% y for rendezvous
+  sstTemp(3,2,1)=0;%  82.5;           %% z for rendezvous
+  sstTemp(4,2,1)=0;%  -0.04;          %% u for rendezvous
+  sstTemp(5,2,1)=0;%   0.29;          %% v for rendezvous
+  sstTemp(6,2,1)= 0;% -0.17;          %% w for rendezvous
 end
-function [sstDesired]=IRSRendezvousDesired(timetemptemp,ns,omega)
+
+function [sstDesired]=IRSRendezvousDesired(timetemptemp,ns,~)
   sstDesired=zeros(9,ns,size(timetemptemp,2));
   %% desired solution
-  for i=1:size(timetemptemp,2)
-    sstDesired(1,2,:)=0.1;
-  end
+  sstDesired(1,2,:)=0.1;
 end
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,omega,mu,satelliteMass,panelSurface]=IvanovFormationFlightInitial(timetemptemp)
 %% initial conditions
   ns=5;
@@ -230,9 +230,8 @@ function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,omega,mu,satelliteMass,
   panelSurface=0.01;              %% m^2  
 
   %% other constants
-  [rho,v,radiusOfEarth,mu]=orbitalproperties(altitude);
+  [rho,v,radiusOfEarth,mu,omega]=orbitalproperties(altitude);
   r0=radiusOfEarth+altitude;    %% in m
-  omega=sqrt(mu/r0^3);          %% mean motion %! could be moved to orbitalproperties
   panels=[0 0 3]; 
   sstTemp=zeros(9,ns,size(timetemptemp,2));
   for i=2:ns
@@ -272,19 +271,13 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,   deltat,                sst0,          e,       flops,windpressure,alphas,betas,gammas,totalforcevector,oldAlphaOpt,oldBetaOpt,oldGammaOpt,refSurf)
+function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,   deltat,                sst0,          e,       flops,windpressure,alphas,betas,gammas,totalforcevector,oldAlphaOpt,oldBetaOpt,oldGammaOpt,refSurf,satelliteMass)
 %% HCW equation 
     
   %% compute control vector
   controlVector=-IR*B'*P*e;
   flops=flops+1e6;
   forceVectorOfMaster=-1/2*1.2*windpressure*refSurf*[1 0 0]';
-  %forceVectorOfMaster'
-  %forceVector'
-  %input('a')
-  %relForceVector=forceVector;%-forceVectorOfMaster;
-  %relForceVector'
-  %forceVectorOfMaster'
   for k=1:size(gammas,2)
     for j=1:size(betas,2)
       for i=1:size(alphas,2)
@@ -293,12 +286,18 @@ function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,   deltat,     
     end
   end
   [forceVector,alphaOpt,betaOpt,gammaOpt]=findBestAerodynamicAngles(usedTotalForceVector,controlVector,alphas,betas,gammas,oldAlphaOpt,oldBetaOpt,oldGammaOpt);
-
+  %{
+  controlVector'
+  forceVectorOfMaster'/satelliteMass
+  forceVector'/satelliteMass
+  %satelliteMass
+  input('a')
+  %}
   %! add computational relaxation here
   
   %! add vehicle inertia here
   %% solve ODE with backward Euler step
-  ssttemptemp(1:6)=(A*sst0(1:6)+B*forceVector)*deltat+sst0(1:6);
+  ssttemptemp(1:6)=(A*sst0(1:6)+B*forceVector/satelliteMass)*deltat+sst0(1:6);
   ssttemptemp(7:9)=[alphaOpt betaOpt gammaOpt]';
   flops=flops+1e6; 
 end
