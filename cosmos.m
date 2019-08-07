@@ -14,8 +14,9 @@
 %%
 %% todo:
 %% implement J2
+%% drag of master
+%% no drag in wake
 %% SGP4 
-%% clean up of code
 %% eliptical orbits
 %% compute moment coefficients and moments
 
@@ -26,21 +27,21 @@ clear all;close all;clc;format shortEng;
 oldpath = path; path(oldpath,'..\matlabfunctions\')
 
 %% constants
-modelfilename=strcat('figures',filesep,'cocu.dae');
+modelfilename     =strcat('figures',filesep,'cocu.dae');
 
 %% simulation time constants I
-currentTime=0;                  %% now, should usually be 0
-time=[0];
-compStep=15;                     %% computational step size in s
-lengthControlLoop=900;          %% in s
-timetemp=0:compStep:lengthControlLoop; %% duration and interpolation timestep for each control loop
+currentTime       =0;           %% now, should usually be 0
+time              =0;
+compStep          =15;          %% computational step size in s
+lengthControlLoop =900;         %% in s
+timetemp  =0:compStep:lengthControlLoop; %% duration and interpolation timestep for each control loop
 %fprintf('\nnumber of float variables for each control loop: %d, size %f kbyte',size(timetemp,2)*(1+6+6+3)+6+1,(size(timetemp,2)*(1+6+6+3)+6+1)*4/1024); %% size of time vector, state vector, desired state vector and anglevector, C and omega of analytical solution
 
 %% initial conditions and desired statevector functions
-sstInitialFunction=@IRSRendezvousInitial;
-sstDesiredFunction=@IRSRendezvousDesired;
-%sstDesiredFunction=@IvanovFormationFlightDesired;
-%sstInitialFunction=@IvanovFormationFlightInitial;
+%sstInitialFunction=@IRSRendezvousInitial;
+%sstDesiredFunction=@IRSRendezvousDesired;
+sstDesiredFunction=@IvanovFormationFlightDesired;
+sstInitialFunction=@IvanovFormationFlightInitial;
 
 %% initial conditions of ODE
 [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,omega,mu,satelliteMass,panelSurface]=sstInitialFunction(currentTime+timetemp); 
@@ -48,45 +49,45 @@ sstDesiredFunction=@IRSRendezvousDesired;
 [P,IR,A,B]=riccatiequation(omega);
 
 %% simulation time constants II
-totalTime=15*2*pi/omega ;                  %% in s
+totalTime   =30*2*pi/omega ;               %% in s
 
 %% non-gravitational perturbations
 windpressure=rho/2*v^2;                   %% pascal
-wind=[-1 0 0]' ;
-wind=wind/sqrt(wind(1)^2+wind(2)^2+wind(3)^2);
+wind        =[-1 0 0]' ;
+wind        =wind/sqrt(wind(1)^2+wind(2)^2+wind(3)^2);
 solarpressure=0;%2*4.5e-6;                %% pascal
-sunlight=[1 1 1]'; 
-sunlight=sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2);
+sunlight    =[1 1 1]'; 
+sunlight    =sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2);
 
 %refsurf=panelSurface*panels(1);
 refSurf=panelSurface;
 
 %% forcevector determination
 deltaAngle=15;                            %% roll,pitch,yaw angle resolution
-alphas=0:deltaAngle:360;                  %% roll
-betas =0:deltaAngle:180;                  %% pitch 
-gammas=0:deltaAngle:360;                  %% yaw
+alphas        =0:deltaAngle:360;          %% roll
+betas         =0:deltaAngle:180;          %% pitch 
+gammas        =0:deltaAngle:360;          %% yaw
 aeroscalingfactor=1; sunscalingfactor=1;  %% these are for visualization of vectors only
-totalforcevector = totalforcevectorfunction(wind,sunlight,panels(1),panels(2),panels(3),alphas,betas,gammas,panelSurface,aeroscalingfactor,solarpressure,sunscalingfactor,windpressure, deltaAngle);
+totalforcevector =totalforcevectorfunction(wind,sunlight,panels(1),panels(2),panels(3),alphas,betas,gammas,panelSurface,aeroscalingfactor,solarpressure,sunscalingfactor,windpressure, deltaAngle);
 
 %% parameters for visualization
 %! there are more parameters in the visualization function
-VIS_DO=0;                   %% do you want to create a google Earth/kml file/vizualization ? 0-no 1-yes
-VIS_SCALE=100;              %% scales deployment, formation size
+VIS_DO        =0;           %% do you want to create a google Earth/kml file/vizualization ? 0-no 1-yes
+VIS_SCALE     =100;         %% scales deployment, formation size
 VIS_ACC_FACTOR=120;         %% speeds up the Google Earth visualization
-VIS_STEP=60;                %% visualization step size in s
+VIS_STEP      =60;          %% visualization step size in s
 fprintf('duration of movie without upper stage flight: %2.1f min\n',totalTime/VIS_ACC_FACTOR/60) %% length of animation in min: totaltime/vis_step/accelerationfactor/60
 
 %% some initializations
-u=zeros(3,ns);              %% control vector
-e=zeros(6,ns);              %% error vector
-sst=zeros(9,ns);            %% columns: statevector per each satellite
+u             =zeros(3,ns); %% control vector
+e             =zeros(6,ns); %% error vector
+sst           =zeros(9,ns); %% columns: statevector per each satellite
 
-utemp=zeros(3,ns,size(timetemp,2));
-etemp=zeros(6,ns,size(timetemp,2));
+utemp         =zeros(3,ns,size(timetemp,2));
+etemp         =zeros(6,ns,size(timetemp,2));
 
 %% set sst for initial step right because only further steps are computed
-sst(:,:,1)=sstTemp(:,:,1);
+sst(:,:,1)  =sstTemp(:,:,1);
 
 %% solving the ODE in chunks per each control period
 flops=0;
@@ -112,10 +113,10 @@ while currentTime<totalTime
   sstTemp(:,:,1)=sstTemp(:,:,end);
   fprintf('\n');
   %% append data of last control loop to global data vector
-  sst =cat(3,sst,sstTemp(:,:,2:end));  
-  u   =cat(3,u,utemp(:,:,2:end));   
-  e   =cat(3,e,etemp(:,:,1:end-1));
-  time=[time ; currentTime+timetemp(2:end)'];  
+  sst     =cat(3,sst,sstTemp(:,:,2:end));  
+  u       =cat(3,u,utemp(:,:,2:end));   
+  e       =cat(3,e,etemp(:,:,1:end-1));
+  time    =[time ; currentTime+timetemp(2:end)'];  
   %% print progress of iterations to screen
   %fprintf('\n flops %d',flops);
   if currentTime>0
@@ -133,8 +134,8 @@ pause(5);
 anglesGE=squeeze(sst(7:9,:,:));
 for j=1:size(anglesGE,3)
   for i=2:ns
-    rotm = eul2rotm(anglesGE(:,i,j)'/180*pi,'ZYZ');
-    anglesGE(:,i,j)=rotm2eul(rotm,'ZYX')'/pi*180;
+    rotm            =eul2rotm(anglesGE(:,i,j)'/180*pi,'ZYZ');
+    anglesGE(:,i,j) =rotm2eul(rotm,'ZYX')'/pi*180;
   end
 end
 
@@ -200,7 +201,7 @@ function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,omega,mu,satelliteMass,
   %% initial condition
   sstTemp(1,2,1)=-930.46;          %% x for rendezvous
   sstTemp(2,2,1)=0;%  55.27;          %% y for rendezvous
-  sstTemp(3,2,1)=0;%  82.5;           %% z for rendezvous
+  sstTemp(3,2,1)=  82.5;           %% z for rendezvous
   sstTemp(4,2,1)=0;%  -0.04;          %% u for rendezvous
   sstTemp(5,2,1)=0;%   0.29;          %% v for rendezvous
   sstTemp(6,2,1)= 0;% -0.17;          %% w for rendezvous
@@ -246,8 +247,8 @@ function [sstDesired]=IvanovFormationFlightDesired(timetemptemp,ns,omega)
 %% desired solution
   sstDesired=zeros(9,ns,size(timetemptemp,2));
   %% analytical solution according to Ivanov
-  %AAA=100;    DDD=115;
-  AAA=10;    DDD=11.5;
+  AAA=100;    DDD=115;
+  %AAA=10;    DDD=11.5;
 
   sstDesired(1,1+1,:)=-DDD;
   sstDesired(1,2+1,:)=DDD;
@@ -271,9 +272,9 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,   deltat,                sst0,          e,       flops,windpressure,alphas,betas,gammas,totalforcevector,oldAlphaOpt,oldBetaOpt,oldGammaOpt,refSurf,satelliteMass)
+function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,flops,windpressure,alphas,betas,gammas,totalforcevector,oldAlphaOpt,oldBetaOpt,oldGammaOpt,refSurf,satelliteMass)
 %% HCW equation 
-    
+  usedTotalForceVector=zeros(3,size(alphas,2),size(betas,2),size(gammas,2));
   %% compute control vector
   controlVector=-IR*B'*P*e;
   flops=flops+1e6;
@@ -874,9 +875,14 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 function [P,IR,A,B]=riccatiequation(omega)
-
-  %R=diag([1e-13 1e-14 1e-14]);
-  R=diag([1e13 1e14 1e14]);
+  %R=diag([1e-13 1e-14 1e-14]); %% this is R given in Ivanov's IAC paper. It seems to be wrong
+  R=diag([1e13 1e14 1e14]);     %% this is my R assuming Ivanov made a sign error
+  %R=diag([1e12 1e14 1e14]);    %% 
+  %R=diag([1e12 1e14 1e14]);    %% 
+  %R=diag([1e12 1e12 1e12]);    %% This is an R of Traub
+  %R=diag([1e15 1e15 1e15]);    %% 
+  %R=diag([1e14 1e14 1e14]);    %% 
+  %R=diag([1e13 1e13 1e13]);    %% 
   Q=eye(6);
   E=eye(3);
   Z=zeros(3,3);
@@ -890,11 +896,10 @@ function [P,IR,A,B]=riccatiequation(omega)
   %% the function care is replaced by icare in later matlab versions
   S=zeros(6,3);
   E2=eye(6);
- [P,L,G] = care(A,B,Q,R,S,E2);
+ [P,~,~] = care(A,B,Q,R,S,E2);
 end
 
 function plotting(angles,sst,time,ns,omega,u,e)
-
   figure
     for j=1:ns
       for i=1:6
@@ -902,7 +907,6 @@ function plotting(angles,sst,time,ns,omega,u,e)
       end
     end
     legend;title('error')
-
 
   figure
    subplot(3,3,1)%% roll
