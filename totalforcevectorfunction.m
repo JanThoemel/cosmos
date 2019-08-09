@@ -215,17 +215,6 @@ function totalforcevector = totalforcevectorfunction(wind,sunlight,noxpanels,noy
         end
       end
     end
-    thetaaero=squeeze(thetaaero(i,:,k));
-    phiaero=squeeze(phiaero(i,:,k));
-    aerodragcoef=squeeze(aerodragcoef(:,j,k));
-    aeroliftcoef=squeeze(aeroliftcoef(:,j,k));
-    figure
-      subplot(2,1,1)
-        plot(betas,thetaaero,betas,phiaero);
-        legend('thetaaero','phiaero');grid on;
-        subplot(2,1,2)
-        plot(alphas,aerodragcoef,alphas,aeroliftcoef);
-        legend('drag','lift');grid on;
     fprintf(' - done\n');
     save(filename,'totalforcevector')
   end  
@@ -246,8 +235,10 @@ end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [drag,lift]=aerodragliftcoef(theta)
-  drag=-abs(1.2*sind(theta-90));      %% simplified formula
-  lift=-abs(0.12*sind(2*(theta-90))); %% simplified formula     
+  %drag=-abs(1.2*sind(theta-90));      %% old wrong formula incorrectling using Ivanov
+  drag=-abs(2.8*sind(theta-90));      %% simplified formula, adopted from Traub
+  %lift=-abs(0.12*sind(2*(theta-90))); %% old wrong formula incorrectling using Ivanov
+  lift=-abs(0.42*sind(2*(theta-90))); %% simplified formula, adopted from Traub
 end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [drag,lift]=sundragliftcoef(theta)

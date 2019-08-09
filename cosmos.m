@@ -32,8 +32,8 @@ modelfilename     =strcat('figures',filesep,'cocu.dae');
 %% simulation time constants I
 currentTime       =0;           %% now, should usually be 0
 time              =0;
-compStep          =15;          %% computational step size in s
-lengthControlLoop =900;         %% in s
+compStep          =9;          %% computational step size in s
+lengthControlLoop =90;         %% in s
 timetemp  =0:compStep:lengthControlLoop; %% duration and interpolation timestep for each control loop
 %fprintf('\nnumber of float variables for each control loop: %d, size %f kbyte',size(timetemp,2)*(1+6+6+3)+6+1,(size(timetemp,2)*(1+6+6+3)+6+1)*4/1024); %% size of time vector, state vector, desired state vector and anglevector, C and omega of analytical solution
 
@@ -49,21 +49,21 @@ sstInitialFunction=@IvanovFormationFlightInitial;
 [P,IR,A,B]=riccatiequation(omega);
 
 %% simulation time constants II
-totalTime   =30*2*pi/omega ;               %% in s
+totalTime   =20*2*pi/omega ;               %% in s
 
 %% non-gravitational perturbations
 windpressure=rho/2*v^2;                   %% pascal
 wind        =[-1 0 0]' ;
 wind        =wind/sqrt(wind(1)^2+wind(2)^2+wind(3)^2);
 solarpressure=0;%2*4.5e-6;                %% pascal
-sunlight    =[1 1 1]'; 
+sunlight    =[0 1 0]'; 
 sunlight    =sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2);
 
 %refsurf=panelSurface*panels(1);
-refSurf=panelSurface;
+refSurf=panelSurface*panels(3);
 
 %% forcevector determination
-deltaAngle=15;                            %% roll,pitch,yaw angle resolution
+deltaAngle=45;                            %% roll,pitch,yaw angle resolution
 alphas        =0:deltaAngle:360;          %% roll
 betas         =0:deltaAngle:180;          %% pitch 
 gammas        =0:deltaAngle:360;          %% yaw
@@ -91,13 +91,14 @@ sst(:,:,1)  =sstTemp(:,:,1);
 
 %% solving the ODE in chunks per each control period
 flops=0;
+%figure
 while currentTime<totalTime
   %% Desired state vector
   [sstDesiredtemp]=sstDesiredFunction(currentTime+timetemp,ns,omega); 
   %% apply disturbances
  
   for j=1:size(timetemp,2)-1    %% for each control loop within ODE solver loop
-    for i=1:ns
+    for i=2:ns
       %% compute error
       etemp(:,i,j)=sstTemp(1:6,i,j)-sstDesiredtemp(1:6,i,j);
       flops=flops+6;
@@ -108,7 +109,10 @@ while currentTime<totalTime
     %utemp(:,1,j+1)=[-1.2 0 0]';
     for i=2:ns %% for each satellite but not the master satellite
         [sstTemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),sstTemp(:,i,j),etemp(:,i,j),flops,windpressure,alphas,betas,gammas,totalforcevector,sstTemp(7,i,j),sstTemp(8,i,j),sstTemp(9,i,j),refSurf,satelliteMass);
-    end 
+    end
+    if abs(sstTemp(1,2,j))<15 && abs(sstTemp(2,2,j))<1 && abs(sstTemp(3,2,j))<10 && sqrt(sstTemp(4,2,j)^2+sstTemp(5,2,j)^2+sstTemp(6,2,j)^2)<0.01
+      break;
+    end
   end
   sstTemp(:,:,1)=sstTemp(:,:,end);
   fprintf('\n');
@@ -124,7 +128,20 @@ while currentTime<totalTime
   end
   currentTime=time(end);
   fprintf('simulated time %4.0f/%4.0f min (%3.0f%%)', currentTime/60, totalTime/60,currentTime/totalTime*100);
+%{
+  if abs(sstTemp(1,2,j))<15 && abs(sstTemp(2,2,j))<1 && abs(sstTemp(3,2,j))<10 && sqrt(sstTemp(4,2,j)^2+sstTemp(5,2,j)^2+sstTemp(6,2,j)^2)<0.01
+    break;
+  end
+    for i=1:ns
+      plot3(squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'-');hold on
+      names(i)=[{strcat('sat',int2str(i))}];
+    end
+    xlabel('X [m]');ylabel('Y [m]');zlabel('Z [m]');legend(names);grid on;hold off;axis equal;
+    pause(0.001)
+%}
 end
+
+hold off;
 
 %% results' plotting
 plotting(sst(7:9,:,:),sst(1:6,:,:),time,ns,omega,u,e);
@@ -191,8 +208,7 @@ function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,omega,mu,satelliteMass,
   [~,~,radiusOfEarth,~,omega]=orbitalproperties(500000);
   altitude=6778137-radiusOfEarth;
   [rho,v,radiusOfEarth,mu]=orbitalproperties(altitude);
-  r0=radiusOfEarth+altitude;    %% in m
-
+  
   %% satelliteshapeproperties, number of 10cmx10cm faces to x,y,z(body coordinates, normally aligned with):
   panels=[0 0 2]; 
   panelSurface=1.1;                %% [m^2]  
@@ -200,11 +216,11 @@ function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,omega,mu,satelliteMass,
   sstTemp=zeros(9,ns,size(timetemptemp,2));
   %% initial condition
   sstTemp(1,2,1)=-930.46;          %% x for rendezvous
-  sstTemp(2,2,1)=0;%  55.27;          %% y for rendezvous
-  sstTemp(3,2,1)=  82.5;           %% z for rendezvous
-  sstTemp(4,2,1)=0;%  -0.04;          %% u for rendezvous
-  sstTemp(5,2,1)=0;%   0.29;          %% v for rendezvous
-  sstTemp(6,2,1)= 0;% -0.17;          %% w for rendezvous
+  sstTemp(2,2,1)=55.27;          %% y for rendezvous
+  sstTemp(3,2,1)=82.5;           %% z for rendezvous
+  sstTemp(4,2,1)=-0.04;          %% u for rendezvous
+  sstTemp(5,2,1)=0.29;          %% v for rendezvous
+  sstTemp(6,2,1)=-0.17;          %% w for rendezvous
 end
 
 function [sstDesired]=IRSRendezvousDesired(timetemptemp,ns,~)
@@ -233,14 +249,14 @@ function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,omega,mu,satelliteMass,
   %% other constants
   [rho,v,radiusOfEarth,mu,omega]=orbitalproperties(altitude);
   r0=radiusOfEarth+altitude;    %% in m
-  panels=[0 0 3]; 
+  panels=[0 0 2]; 
   sstTemp=zeros(9,ns,size(timetemptemp,2));
   for i=2:ns
       sstTemp(1,i,1)=(i-2)*ejectionVelocity*timeBetweenEjections; %% x position
-      sstTemp(4,i,1)=0;%ejectionVelocity;                            %% u velocity
-      sstTemp(7,i,1)=0;      %% alpha
-      sstTemp(8,i,1)=0;      %% beta
-      sstTemp(9,i,1)=0;      %% gamma
+      sstTemp(4,i,1)=0;%ejectionVelocity;       %% u velocity
+      sstTemp(7,i,1)=0;           %% alpha
+      sstTemp(8,i,1)=0;           %% beta
+      sstTemp(9,i,1)=0;           %% gamma
   end
 end
 function [sstDesired]=IvanovFormationFlightDesired(timetemptemp,ns,omega)
@@ -278,7 +294,9 @@ function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,f
   %% compute control vector
   controlVector=-IR*B'*P*e;
   flops=flops+1e6;
-  forceVectorOfMaster=-1/2*1.2*windpressure*refSurf*[1 0 0]';
+  
+  %% passive master
+  forceVectorOfMaster=-1/2*2.8*windpressure*refSurf*[1 0 0]';
   for k=1:size(gammas,2)
     for j=1:size(betas,2)
       for i=1:size(alphas,2)
@@ -287,6 +305,22 @@ function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,f
     end
   end
   [forceVector,alphaOpt,betaOpt,gammaOpt]=findBestAerodynamicAngles(usedTotalForceVector,controlVector,alphas,betas,gammas,oldAlphaOpt,oldBetaOpt,oldGammaOpt);
+  forceVector
+  
+  %{
+  %% active master
+  maxforceVectorOfMaster=-2.8*windpressure*refSurf*[1 0 0]';
+  for k=1:size(gammas,2)
+    for j=1:size(betas,2)
+      for i=1:size(alphas,2)
+        usedTotalForceVector(:,i,j,k)=2*totalforcevector(:,i,j,k)-maxforceVectorOfMaster(:);
+      end
+    end
+  end
+  [forceVector,alphaOpt,betaOpt,gammaOpt]=findBestAerodynamicAngles(usedTotalForceVector,controlVector,alphas,betas,gammas,oldAlphaOpt,oldBetaOpt,oldGammaOpt);
+  %}
+  
+  
   %{
   controlVector'
   forceVectorOfMaster'/satelliteMass
@@ -295,12 +329,28 @@ function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,f
   input('a')
   %}
   %! add computational relaxation here
-  
+%  alphaOpt=0;betaOpt=0;gammaOpt=0;
+  %{
+  forceVector2=controlVector*satelliteMass-forceVectorOfMaster;
+  forceVector'
+  forceVector2'
+  input('a')
+  %}
   %! add vehicle inertia here
   %% solve ODE with backward Euler step
   ssttemptemp(1:6)=(A*sst0(1:6)+B*forceVector/satelliteMass)*deltat+sst0(1:6);
   ssttemptemp(7:9)=[alphaOpt betaOpt gammaOpt]';
   flops=flops+1e6; 
+  %{
+  A
+  sst0(1:6)'
+  B
+  forceVector
+  B*forceVector/satelliteMass
+  deltat
+  ssttemptemp(1:6)
+  input('a')
+  %}
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -875,14 +925,17 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 function [P,IR,A,B]=riccatiequation(omega)
-  %R=diag([1e-13 1e-14 1e-14]); %% this is R given in Ivanov's IAC paper. It seems to be wrong
-  R=diag([1e13 1e14 1e14]);     %% this is my R assuming Ivanov made a sign error
   %R=diag([1e12 1e14 1e14]);    %% 
   %R=diag([1e12 1e14 1e14]);    %% 
   %R=diag([1e12 1e12 1e12]);    %% This is an R of Traub
-  %R=diag([1e15 1e15 1e15]);    %% 
+  %R=diag([1e-13 1e-14 1e-14]); %% this is R given in Ivanov's IAC paper. It seems to be wrong
+  %R=diag([1e13 1e14 1e14]);     %% this is my R assuming Ivanov made a sign error
   %R=diag([1e14 1e14 1e14]);    %% 
-  %R=diag([1e13 1e13 1e13]);    %% 
+  %R=diag([1e15 1e15 1e15]);    %% 
+  %R=diag([3e15 3e15 3e15]);    %% 
+  %R=diag([1e16 1e16 1e16]);    %% 
+  R=diag([1e17 1e17 1e17]);    %% 
+  %R=diag([1e18 1e18 1e18]);    %% 
   Q=eye(6);
   E=eye(3);
   Z=zeros(3,3);
@@ -900,6 +953,7 @@ function [P,IR,A,B]=riccatiequation(omega)
 end
 
 function plotting(angles,sst,time,ns,omega,u,e)
+
   figure
     for j=1:ns
       for i=1:6
@@ -909,53 +963,71 @@ function plotting(angles,sst,time,ns,omega,u,e)
     legend;title('error')
 
   figure
-   subplot(3,3,1)%% roll
+   subplot(4,3,1)%% roll
      for i=1:ns
        plot(squeeze(time/2/pi*omega),squeeze(angles(1,i,:)));hold on
        names(i)=[{strcat('sat',int2str(i))}];
      end
     ylabel('roll angle [deg]');xlabel('no. of orbits');grid on;hold off;legend(names);
-    subplot(3,3,2)%% pitch
+    subplot(4,3,2)%% pitch
     for i=1:ns
        plot(squeeze(time/2/pi*omega),squeeze(angles(2,i,:)));hold on
     end
     ylabel('pitch angle [deg]');xlabel('no. of orbits');grid on;hold off;
-    subplot(3,3,3)%%yaw
+    subplot(4,3,3)%%yaw
     for i=1:ns
        plot(squeeze(time/2/pi*omega),squeeze(angles(3,i,:)));hold on
     end
     ylabel('yaw angle [deg]');xlabel('no. of orbits');grid on;hold off
-    subplot(3,3,4)%%x
+    subplot(4,3,4)%%x
     for i=1:ns
        plot(squeeze(time/2/pi*omega),squeeze(sst(1,i,:)));hold on
     end
     ylabel('x [m]');xlabel('no. of orbits');grid on;hold off
-    subplot(3,3,5)%%y
+    subplot(4,3,5)%%y
     for i=1:ns
        plot(squeeze(time/2/pi*omega),squeeze(sst(2,i,:)));hold on
     end
     ylabel('y [m]');xlabel('no. of orbits');grid on;hold off
-    subplot(3,3,6)%%z
+    subplot(4,3,6)%%z
     for i=1:ns
        plot(squeeze(time/2/pi*omega),squeeze(sst(3,i,:)));hold on
     end
     ylabel('z [m]');xlabel('no. of orbits');grid on;hold off
-    subplot(3,3,7)%%u1
+    subplot(4,3,7)%%u1
     for i=1:ns
        plot(squeeze(time/2/pi*omega),squeeze(u(1,i,:)));hold on
     end
     ylabel('u1');xlabel('no. of orbits');grid on;hold off
-    subplot(3,3,8)%%u2
+    subplot(4,3,8)%%u2
     for i=1:ns
        plot(squeeze(time/2/pi*omega),squeeze(u(2,i,:)));hold on
     end
     ylabel('u2');xlabel('no. of orbits');grid on;hold off
-    subplot(3,3,9)%%u3
+    subplot(4,3,9)%%u3
     for i=1:ns
        plot(squeeze(time/2/pi*omega),squeeze(u(3,i,:)));hold on
     end
     ylabel('u3');xlabel('no. of orbits');grid on;hold off
-
+    
+    subplot(4,3,10)%%u
+    for i=1:ns
+       plot(squeeze(time/2/pi*omega),squeeze(sst(4,i,:)));hold on
+    end
+    ylabel('u [m/s]');xlabel('no. of orbits');grid on;hold off
+    subplot(4,3,11)%%v
+    for i=1:ns
+       plot(squeeze(time/2/pi*omega),squeeze(sst(5,i,:)));hold on
+    end
+    ylabel('v [m/s]');xlabel('no. of orbits');grid on;hold off
+    subplot(4,3,12)%%w
+    for i=1:ns
+       plot(squeeze(time/2/pi*omega),squeeze(sst(6,i,:)));hold on
+    end
+    ylabel('w [m/s]');xlabel('no. of orbits');grid on;hold off
+    
+    
+    
   figure
     for i=1:ns
       plot3(squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'-');hold on
@@ -968,7 +1040,20 @@ function plotting(angles,sst,time,ns,omega,u,e)
       set(gcf,'PaperUnits', 'inches','PaperPosition', [0 0 2 2]) ;
       fprintf('2by2','-dpng','-r0')
     end
-end    
+    %{
+  traub = csvread('TraubFig5.csv');
+  %csvwrite('zxyplane.csv',squeeze(sst(1:3,2,:)))
+  % zxplane was computed with R=1e15
+  
+  xzplane=csvread('zxplane.csv');
+  %xzyplane=csvread('zxyplane.csv');
+  figure
+    %plot(traub(:,1),traub(:,2),xzplane(1,:),xzplane(3,:),xzyplane(1,:),xzyplane(3,:),squeeze(sst(1,i,:)),squeeze(sst(3,i,:)))
+    plot(traub(:,1),traub(:,2),xzplane(1,:),xzplane(3,:),squeeze(sst(1,i,:)),squeeze(sst(3,i,:)))
+    xlabel('X [m]','FontSize', 40);ylabel('Y [m]','FontSize', 40);legend('Traub','this research in-plane only','this research','last','FontSize', 40);grid on;axis equal;
+    set(gca,'FontSize',40);set(gcf,'units','centimeters','position',[0,0,60,80]);axis([-1400 300 -400 600]);hold off;
+%}
+end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
