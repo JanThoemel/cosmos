@@ -6,7 +6,8 @@
 %% 69th International Astronautical Congress (IAC), Bremen, Germany, 1-5 October 2018.
 
 %% Revision history:
-%% 08/06/2019:  Ivanov's formation flight seems to work only for a downscaled formation size
+%% 10/06/2019:  aerocoeff corrected, Ivanov and Traub work
+%% 06/08/2019:  Ivanov's formation flight seems to work only for a downscaled formation size
 %% 29/07/2019:  first version of satellite attitude through Euler angles implemented, needs verification
 %% 20/04/2019:  runs arbitrary number of satellites with HCW equation without control, looks much like fig 9 of Ivanov
 %% 04/05/2019:  LQR control implemented but without aerodynamics 
@@ -26,10 +27,11 @@
 clear all;close all;clc;format shortEng;
 oldpath = path; path(oldpath,'..\matlabfunctions\')
 
-%% constants
+%% filenames
 modelfilename     =strcat('figures',filesep,'cocu.dae');
 
-%% simulation time constants I
+%% simulation time constants
+totalTime   =10*90*60;               %% approximate multiples of orbit durations, in s
 currentTime       =0;           %% now, should usually be 0
 time              =0;
 compStep          =9;          %% computational step size in s
@@ -38,18 +40,15 @@ timetemp  =0:compStep:lengthControlLoop; %% duration and interpolation timestep 
 %fprintf('\nnumber of float variables for each control loop: %d, size %f kbyte',size(timetemp,2)*(1+6+6+3)+6+1,(size(timetemp,2)*(1+6+6+3)+6+1)*4/1024); %% size of time vector, state vector, desired state vector and anglevector, C and omega of analytical solution
 
 %% initial conditions and desired statevector functions
-%sstInitialFunction=@IRSRendezvousInitial;
-%sstDesiredFunction=@IRSRendezvousDesired;
-sstDesiredFunction=@IvanovFormationFlightDesired;
-sstInitialFunction=@IvanovFormationFlightInitial;
+sstInitialFunction=@IRSRendezvousInitial;
+sstDesiredFunction=@IRSRendezvousDesired;
+%sstDesiredFunction=@IvanovFormationFlightDesired;
+%sstInitialFunction=@IvanovFormationFlightInitial;
 
 %% initial conditions of ODE
 [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,omega,mu,satelliteMass,panelSurface]=sstInitialFunction(currentTime+timetemp); 
 
 [P,IR,A,B]=riccatiequation(omega);
-
-%% simulation time constants II
-totalTime   =20*2*pi/omega ;               %% in s
 
 %% non-gravitational perturbations
 windpressure=rho/2*v^2;                   %% pascal
@@ -70,6 +69,12 @@ gammas        =0:deltaAngle:360;          %% yaw
 aeroscalingfactor=1; sunscalingfactor=1;  %% these are for visualization of vectors only
 totalforcevector =totalforcevectorfunction(wind,sunlight,panels(1),panels(2),panels(3),alphas,betas,gammas,panelSurface,aeroscalingfactor,solarpressure,sunscalingfactor,windpressure, deltaAngle);
 
+%% features
+% stop upon target conditions
+stopUponTarget=0;
+wakeAerodynamics=1;
+activeMaster=1;     %% if 0 then passive Master
+
 %% parameters for visualization
 %! there are more parameters in the visualization function
 VIS_DO        =0;           %% do you want to create a google Earth/kml file/vizualization ? 0-no 1-yes
@@ -87,7 +92,7 @@ utemp         =zeros(3,ns,size(timetemp,2));
 etemp         =zeros(6,ns,size(timetemp,2));
 
 %% set sst for initial step right because only further steps are computed
-sst(:,:,1)  =sstTemp(:,:,1);
+sst(:,:,1)    =sstTemp(:,:,1);
 
 %% solving the ODE in chunks per each control period
 flops=0;
@@ -102,19 +107,21 @@ while currentTime<totalTime
       %% compute error
       etemp(:,i,j)=sstTemp(1:6,i,j)-sstDesiredtemp(1:6,i,j);
       flops=flops+6;
-      %fprintf('\n %e %e %e %e %e %',e(1,i,j),e(2,i,j),e(3,i,j),e(4,i,j),e(5,i,j),e(6,i,j));
+      %fprintf('\ne %e %e %e %e %e %e',etemp(1,i,j),etemp(2,i,j),etemp(3,i,j),etemp(4,i,j),etemp(5,i,j),etemp(6,i,j));
     end
     %% modify error vector with some averages according to Ivanov
     %x(:,1,j+1)=[0 0 0 0 0 0]';
     %utemp(:,1,j+1)=[-1.2 0 0]';
     for i=2:ns %% for each satellite but not the master satellite
-        [sstTemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),sstTemp(:,i,j),etemp(:,i,j),flops,windpressure,alphas,betas,gammas,totalforcevector,sstTemp(7,i,j),sstTemp(8,i,j),sstTemp(9,i,j),refSurf,satelliteMass);
+      [sstTemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),sstTemp(:,i,j),etemp(:,i,j),flops,windpressure,alphas,betas,gammas,totalforcevector,sstTemp(7,i,j),sstTemp(8,i,j),sstTemp(9,i,j),refSurf,satelliteMass,wakeAerodynamics,activeMaster);
     end
-    if abs(sstTemp(1,2,j))<15 && abs(sstTemp(2,2,j))<1 && abs(sstTemp(3,2,j))<10 && sqrt(sstTemp(4,2,j)^2+sstTemp(5,2,j)^2+sstTemp(6,2,j)^2)<0.01
-      break;
-    end
-  end
+    %% this is to interrupt when a condition, i.e. proximity is achieved, don't use if you start in proximity as for instance for formation flight 
+    %if stopUponTarget && abs(sstTemp(1,2,j))<15 && abs(sstTemp(2,2,j))<1 && abs(sstTemp(3,2,j))<10 && sqrt(sstTemp(4,2,j)^2+sstTemp(5,2,j)^2+sstTemp(6,2,j)^2)<0.01
+    %  break;
+    %end
+  end %j
   sstTemp(:,:,1)=sstTemp(:,:,end);
+ 
   fprintf('\n');
   %% append data of last control loop to global data vector
   sst     =cat(3,sst,sstTemp(:,:,2:end));  
@@ -128,17 +135,18 @@ while currentTime<totalTime
   end
   currentTime=time(end);
   fprintf('simulated time %4.0f/%4.0f min (%3.0f%%)', currentTime/60, totalTime/60,currentTime/totalTime*100);
-%{
-  if abs(sstTemp(1,2,j))<15 && abs(sstTemp(2,2,j))<1 && abs(sstTemp(3,2,j))<10 && sqrt(sstTemp(4,2,j)^2+sstTemp(5,2,j)^2+sstTemp(6,2,j)^2)<0.01
-    break;
+
+  %if stopUponTarget && abs(sstTemp(1,2,j))<15 && abs(sstTemp(2,2,j))<1 && abs(sstTemp(3,2,j))<10 && sqrt(sstTemp(4,2,j)^2+sstTemp(5,2,j)^2+sstTemp(6,2,j)^2)<0.01
+  %  break;
+  %end
+  %{
+  for i=1:ns
+    plot3(squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'-');hold on
+    names(i)=[{strcat('sat',int2str(i))}];
   end
-    for i=1:ns
-      plot3(squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'-');hold on
-      names(i)=[{strcat('sat',int2str(i))}];
-    end
-    xlabel('X [m]');ylabel('Y [m]');zlabel('Z [m]');legend(names);grid on;hold off;axis equal;
-    pause(0.001)
-%}
+  xlabel('X [m]');ylabel('Y [m]');zlabel('Z [m]');legend(names);grid on;hold off;axis equal;
+  pause(0.001)
+  %}
 end
 
 hold off;
@@ -216,10 +224,10 @@ function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,omega,mu,satelliteMass,
   sstTemp=zeros(9,ns,size(timetemptemp,2));
   %% initial condition
   sstTemp(1,2,1)=-930.46;          %% x for rendezvous
-  sstTemp(2,2,1)=55.27;          %% y for rendezvous
+  sstTemp(2,2,1)=0;%55.27;          %% y for rendezvous
   sstTemp(3,2,1)=82.5;           %% z for rendezvous
   sstTemp(4,2,1)=-0.04;          %% u for rendezvous
-  sstTemp(5,2,1)=0.29;          %% v for rendezvous
+  sstTemp(5,2,1)=0;%0.29;          %% v for rendezvous
   sstTemp(6,2,1)=-0.17;          %% w for rendezvous
 end
 
@@ -253,7 +261,7 @@ function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,omega,mu,satelliteMass,
   sstTemp=zeros(9,ns,size(timetemptemp,2));
   for i=2:ns
       sstTemp(1,i,1)=(i-2)*ejectionVelocity*timeBetweenEjections; %% x position
-      sstTemp(4,i,1)=0;%ejectionVelocity;       %% u velocity
+      sstTemp(4,i,1)=0;            %% u velocity
       sstTemp(7,i,1)=0;           %% alpha
       sstTemp(8,i,1)=0;           %% beta
       sstTemp(9,i,1)=0;           %% gamma
@@ -288,46 +296,62 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,flops,windpressure,alphas,betas,gammas,totalforcevector,oldAlphaOpt,oldBetaOpt,oldGammaOpt,refSurf,satelliteMass)
-%% HCW equation 
+function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,flops,windpressure,alphas,betas,gammas,totalforcevector,oldAlphaOpt,oldBetaOpt,oldGammaOpt,refSurf,satelliteMass,wakeAerodynamics,activeMaster)
+%hcwequation2 Hill-Clohessy-Wiltshire equation
+
   usedTotalForceVector=zeros(3,size(alphas,2),size(betas,2),size(gammas,2));
   %% compute control vector
   controlVector=-IR*B'*P*e;
   flops=flops+1e6;
   
   %% passive master
-  forceVectorOfMaster=-1/2*2.8*windpressure*refSurf*[1 0 0]';
-  for k=1:size(gammas,2)
-    for j=1:size(betas,2)
-      for i=1:size(alphas,2)
-        usedTotalForceVector(:,i,j,k)=totalforcevector(:,i,j,k)-forceVectorOfMaster(:);
+  if activeMaster
+    %% active master
+    maxforceVectorOfMaster=-2.8*windpressure*refSurf*[1 0 0]';
+    %% wake aerodynamics
+    if wakeAerodynamics
+      if abs(sst0(2))<1.5 && abs(sst0(3))< 1.5 %% is sat2 aligned with sat1?
+        if sst0(1) < 0 %% is sat2 before sat1?
+          maxforceVectorOfMaster=maxforceVectorOfMaster/10;
+          fprintf('m')
+        elseif sst0(1) > 0 %% is sat2 before sat2?
+          totalforcevector(1,:,:,:)=totalforcevector(1,:,:,:)/10;
+          fprintf('s')
+        else
+          fprint('\n error');
+        end
       end
     end
-  end
-  [forceVector,alphaOpt,betaOpt,gammaOpt]=findBestAerodynamicAngles(usedTotalForceVector,controlVector,alphas,betas,gammas,oldAlphaOpt,oldBetaOpt,oldGammaOpt);
-  forceVector
-  
-  %{
-  %% active master
-  maxforceVectorOfMaster=-2.8*windpressure*refSurf*[1 0 0]';
-  for k=1:size(gammas,2)
-    for j=1:size(betas,2)
-      for i=1:size(alphas,2)
-        usedTotalForceVector(:,i,j,k)=2*totalforcevector(:,i,j,k)-maxforceVectorOfMaster(:);
+    for k=1:size(gammas,2)
+      for j=1:size(betas,2)
+        for i=1:size(alphas,2)
+          usedTotalForceVector(:,i,j,k)=2*totalforcevector(:,i,j,k)-maxforceVectorOfMaster(:);
+        end
       end
     end
+    [forceVector,alphaOpt,betaOpt,gammaOpt]=findBestAerodynamicAngles(usedTotalForceVector,controlVector,alphas,betas,gammas,oldAlphaOpt,oldBetaOpt,oldGammaOpt);
+  else
+    forceVectorOfMaster=-1/2*2.8*windpressure*refSurf*[1 0 0]';  
+      for k=1:size(gammas,2)
+        for j=1:size(betas,2)
+          for i=1:size(alphas,2)
+            usedTotalForceVector(:,i,j,k)=totalforcevector(:,i,j,k)-forceVectorOfMaster(:);
+          end
+        end
+      end
+      [forceVector,alphaOpt,betaOpt,gammaOpt]=findBestAerodynamicAngles(usedTotalForceVector,controlVector,alphas,betas,gammas,oldAlphaOpt,oldBetaOpt,oldGammaOpt);
   end
-  [forceVector,alphaOpt,betaOpt,gammaOpt]=findBestAerodynamicAngles(usedTotalForceVector,controlVector,alphas,betas,gammas,oldAlphaOpt,oldBetaOpt,oldGammaOpt);
-  %}
   
   
-  %{
-  controlVector'
-  forceVectorOfMaster'/satelliteMass
-  forceVector'/satelliteMass
+  
+  
+  %alphaOpt,betaOpt,gammaOpt
+  %controlVector'
+  %forceVectorOfMaster'/satelliteMass
+  %forceVector'/satelliteMass
   %satelliteMass
-  input('a')
-  %}
+  %input('a')
+  
   %! add computational relaxation here
 %  alphaOpt=0;betaOpt=0;gammaOpt=0;
   %{
@@ -341,16 +365,13 @@ function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,f
   ssttemptemp(1:6)=(A*sst0(1:6)+B*forceVector/satelliteMass)*deltat+sst0(1:6);
   ssttemptemp(7:9)=[alphaOpt betaOpt gammaOpt]';
   flops=flops+1e6; 
-  %{
-  A
-  sst0(1:6)'
-  B
-  forceVector
-  B*forceVector/satelliteMass
-  deltat
-  ssttemptemp(1:6)
-  input('a')
-  %}
+  %A
+  %sst0(1:6)'
+  %B
+  %forceVector
+  %ssttemptemp(1:6)
+  %input('b')
+  
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -931,10 +952,10 @@ function [P,IR,A,B]=riccatiequation(omega)
   %R=diag([1e-13 1e-14 1e-14]); %% this is R given in Ivanov's IAC paper. It seems to be wrong
   %R=diag([1e13 1e14 1e14]);     %% this is my R assuming Ivanov made a sign error
   %R=diag([1e14 1e14 1e14]);    %% 
-  %R=diag([1e15 1e15 1e15]);    %% 
+  R=diag([1e15 1e15 1e15]);    %% 
   %R=diag([3e15 3e15 3e15]);    %% 
   %R=diag([1e16 1e16 1e16]);    %% 
-  R=diag([1e17 1e17 1e17]);    %% 
+  %R=diag([1e17 1e17 1e17]);    %% 
   %R=diag([1e18 1e18 1e18]);    %% 
   Q=eye(6);
   E=eye(3);
@@ -1040,19 +1061,19 @@ function plotting(angles,sst,time,ns,omega,u,e)
       set(gcf,'PaperUnits', 'inches','PaperPosition', [0 0 2 2]) ;
       fprintf('2by2','-dpng','-r0')
     end
-    %{
+   
   traub = csvread('TraubFig5.csv');
   %csvwrite('zxyplane.csv',squeeze(sst(1:3,2,:)))
   % zxplane was computed with R=1e15
   
   xzplane=csvread('zxplane.csv');
-  %xzyplane=csvread('zxyplane.csv');
+  xzyplane=csvread('zxyplane.csv');
   figure
     %plot(traub(:,1),traub(:,2),xzplane(1,:),xzplane(3,:),xzyplane(1,:),xzyplane(3,:),squeeze(sst(1,i,:)),squeeze(sst(3,i,:)))
-    plot(traub(:,1),traub(:,2),xzplane(1,:),xzplane(3,:),squeeze(sst(1,i,:)),squeeze(sst(3,i,:)))
-    xlabel('X [m]','FontSize', 40);ylabel('Y [m]','FontSize', 40);legend('Traub','this research in-plane only','this research','last','FontSize', 40);grid on;axis equal;
+    plot(traub(:,1),traub(:,2),xzplane(1,:),xzplane(3,:),xzyplane(1,:),xzyplane(3,:),squeeze(sst(1,i,:)),squeeze(sst(3,i,:)))
+    xlabel('X [m]','FontSize', 40);ylabel('Y [m]','FontSize', 40);legend('Traub','this research in-plane only','this research without wake','this research with wake','last','FontSize', 40);grid on;axis equal;
     set(gca,'FontSize',40);set(gcf,'units','centimeters','position',[0,0,60,80]);axis([-1400 300 -400 600]);hold off;
-%}
+
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
