@@ -37,7 +37,7 @@ time              =0;
 compStep          =9;          %% computational step size in s
 lengthControlLoop =90;         %% in s
 timetemp  =0:compStep:lengthControlLoop; %% duration and interpolation timestep for each control loop
-%fprintf('\nnumber of float variables for each control loop: %d, size %f kbyte',size(timetemp,2)*(1+6+6+3)+6+1,(size(timetemp,2)*(1+6+6+3)+6+1)*4/1024); %% size of time vector, state vector, desired state vector and anglevector, C and omega of analytical solution
+%fprintf('\nnumber of float variables for each control loop: %d, size %f kbyte',size(timetemp,2)*(1+6+6+3)+6+1,(size(timetemp,2)*(1+6+6+3)+6+1)*4/1024); %% size of time vector, state vector, desired state vector and anglevector, C and MeanMotion of analytical solution
 
 %% initial conditions and desired statevector functions
 sstInitialFunction=@IRSRendezvousInitial;
@@ -46,9 +46,9 @@ sstDesiredFunction=@IRSRendezvousDesired;
 %sstInitialFunction=@IvanovFormationFlightInitial;
 
 %% initial conditions of ODE
-[sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,omega,mu,satelliteMass,panelSurface]=sstInitialFunction(currentTime+timetemp); 
+[sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satelliteMass,panelSurface]=sstInitialFunction(currentTime+timetemp); 
 
-[P,IR,A,B]=riccatiequation(omega);
+[P,IR,A,B]=riccatiequation(MeanMotion);
 
 %% non-gravitational perturbations
 windpressure=rho/2*v^2;                   %% pascal
@@ -99,7 +99,7 @@ flops=0;
 %figure
 while currentTime<totalTime
   %% Desired state vector
-  [sstDesiredtemp]=sstDesiredFunction(currentTime+timetemp,ns,omega); 
+  [sstDesiredtemp]=sstDesiredFunction(currentTime+timetemp,ns,MeanMotion); 
   %% apply disturbances
  
   for j=1:size(timetemp,2)-1    %% for each control loop within ODE solver loop
@@ -152,7 +152,7 @@ end
 hold off;
 
 %% results' plotting
-plotting(sst(7:9,:,:),sst(1:6,:,:),time,ns,omega,u,e);
+plotting(sst(7:9,:,:),sst(1:6,:,:),time,ns,MeanMotion,u,e);
 pause(5);
 
 %% convert from classical ZYZ Euler angles to Google Earth Euler angles ZYX
@@ -187,7 +187,7 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,omega,mu,satelliteMass,panelSurface]=IRSRendezvousInitial(timetemptemp)
+function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satelliteMass,panelSurface]=IRSRendezvousInitial(timetemptemp)
 % conditions for IRS's Discoverers mission:
 % r0=6778.137         %% km
 % inclinition=10;     %% degree
@@ -213,14 +213,14 @@ function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,omega,mu,satelliteMass,
   argumentOfPerigeeAtTe0=0;     %% not used yet
   trueAnomalyAtTe0=0;           %% not used yet
   %% other constants
-  [~,~,radiusOfEarth,~,omega]=orbitalproperties(500000);
+  [~,~,radiusOfEarth,~,MeanMotion]=orbitalproperties(500000);
   altitude=6778137-radiusOfEarth;
   [rho,v,radiusOfEarth,mu]=orbitalproperties(altitude);
   
   %% satelliteshapeproperties, number of 10cmx10cm faces to x,y,z(body coordinates, normally aligned with):
   panels=[0 0 2]; 
   panelSurface=1.1;                %% [m^2]  
-  %startSecondPhase=8*2*pi/omega;   %% [s]
+  %startSecondPhase=8*2*pi/MeanMotion;   %% [s]
   sstTemp=zeros(9,ns,size(timetemptemp,2));
   %% initial condition
   sstTemp(1,2,1)=-930.46;          %% x for rendezvous
@@ -242,7 +242,7 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,omega,mu,satelliteMass,panelSurface]=IvanovFormationFlightInitial(timetemptemp)
+function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satelliteMass,panelSurface]=IvanovFormationFlightInitial(timetemptemp)
 %% initial conditions
   ns=5;
   satelliteMass=1;
@@ -251,11 +251,11 @@ function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,omega,mu,satelliteMass,
   trueAnomalyAtTe0=0;             %% not used yet
   ejectionVelocity=0.5;           %% m/s
   timeBetweenEjections=10;        %% in s
-  %startSecondPhase=8*2*pi/omega;  %% in s
+  %startSecondPhase=8*2*pi/MeanMotion;  %% in s
   panelSurface=0.01;              %% m^2  
 
   %% other constants
-  [rho,v,radiusOfEarth,mu,omega]=orbitalproperties(altitude);
+  [rho,v,radiusOfEarth,mu,MeanMotion]=orbitalproperties(altitude);
   r0=radiusOfEarth+altitude;    %% in m
   panels=[0 0 2]; 
   sstTemp=zeros(9,ns,size(timetemptemp,2));
@@ -267,7 +267,7 @@ function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,omega,mu,satelliteMass,
       sstTemp(9,i,1)=0;           %% gamma
   end
 end
-function [sstDesired]=IvanovFormationFlightDesired(timetemptemp,ns,omega)
+function [sstDesired]=IvanovFormationFlightDesired(timetemptemp,ns,MeanMotion)
 %% desired solution
   sstDesired=zeros(9,ns,size(timetemptemp,2));
   %% analytical solution according to Ivanov
@@ -277,19 +277,19 @@ function [sstDesired]=IvanovFormationFlightDesired(timetemptemp,ns,omega)
   sstDesired(1,1+1,:)=-DDD;
   sstDesired(1,2+1,:)=DDD;
 
-  sstDesired(1,3+1,:)=2*AAA*        cos(omega*(timetemptemp)-acos(1/3));  
-  sstDesired(1,4+1,:)=2*AAA*        cos(omega*(timetemptemp));
-  sstDesired(2,3+1,:)=  AAA*sqrt(3)*sin(omega*(timetemptemp));
-  sstDesired(2,4+1,:)=  AAA*sqrt(3)*sin(omega*(timetemptemp)+acos(1/3));
-  sstDesired(3,3+1,:)=  AAA*        sin(omega*(timetemptemp)-acos(1/3));
-  sstDesired(3,4+1,:)=  AAA*        sin(omega*(timetemptemp));
+  sstDesired(1,3+1,:)=2*AAA*        cos(MeanMotion*(timetemptemp)-acos(1/3));  
+  sstDesired(1,4+1,:)=2*AAA*        cos(MeanMotion*(timetemptemp));
+  sstDesired(2,3+1,:)=  AAA*sqrt(3)*sin(MeanMotion*(timetemptemp));
+  sstDesired(2,4+1,:)=  AAA*sqrt(3)*sin(MeanMotion*(timetemptemp)+acos(1/3));
+  sstDesired(3,3+1,:)=  AAA*        sin(MeanMotion*(timetemptemp)-acos(1/3));
+  sstDesired(3,4+1,:)=  AAA*        sin(MeanMotion*(timetemptemp));
   
-  sstDesired(4,3+1,:)=2*AAA*       -sin(omega*(timetemptemp)-acos(1/3))*omega;  
-  sstDesired(4,4+1,:)=2*AAA*       -sin(omega*(timetemptemp))*omega;
-  sstDesired(5,3+1,:)=  AAA*sqrt(3)*cos(omega*(timetemptemp))*omega;
-  sstDesired(5,4+1,:)=  AAA*sqrt(3)*cos(omega*(timetemptemp)+acos(1/3))*omega;
-  sstDesired(6,3+1,:)=  AAA*        cos(omega*(timetemptemp)-acos(1/3))*omega;
-  sstDesired(6,4+1,:)=  AAA*        cos(omega*(timetemptemp))*omega;
+  sstDesired(4,3+1,:)=2*AAA*       -sin(MeanMotion*(timetemptemp)-acos(1/3))*MeanMotion;  
+  sstDesired(4,4+1,:)=2*AAA*       -sin(MeanMotion*(timetemptemp))*MeanMotion;
+  sstDesired(5,3+1,:)=  AAA*sqrt(3)*cos(MeanMotion*(timetemptemp))*MeanMotion;
+  sstDesired(5,4+1,:)=  AAA*sqrt(3)*cos(MeanMotion*(timetemptemp)+acos(1/3))*MeanMotion;
+  sstDesired(6,3+1,:)=  AAA*        cos(MeanMotion*(timetemptemp)-acos(1/3))*MeanMotion;
+  sstDesired(6,4+1,:)=  AAA*        cos(MeanMotion*(timetemptemp))*MeanMotion;
 
 end
 
@@ -945,7 +945,7 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [P,IR,A,B]=riccatiequation(omega)
+function [P,IR,A,B]=riccatiequation(MeanMotion)
   %R=diag([1e12 1e14 1e14]);    %% 
   %R=diag([1e12 1e14 1e14]);    %% 
   %R=diag([1e12 1e12 1e12]);    %% This is an R of Traub
@@ -960,8 +960,8 @@ function [P,IR,A,B]=riccatiequation(omega)
   Q=eye(6);
   E=eye(3);
   Z=zeros(3,3);
-  C=[0 0 0; 0 -omega^2 0;0 0 3*omega^2];
-  D=[0 0 -2*omega;0 0 0;2*omega 0 0];
+  C=[0 0 0; 0 -MeanMotion^2 0;0 0 3*MeanMotion^2];
+  D=[0 0 -2*MeanMotion;0 0 0;2*MeanMotion 0 0];
 
   A=[Z E; C D];
   B=[Z;E];
@@ -973,7 +973,7 @@ function [P,IR,A,B]=riccatiequation(omega)
  [P,~,~] = care(A,B,Q,R,S,E2);
 end
 
-function plotting(angles,sst,time,ns,omega,u,e)
+function plotting(angles,sst,time,ns,MeanMotion,u,e)
 
   figure
     for j=1:ns
@@ -986,64 +986,64 @@ function plotting(angles,sst,time,ns,omega,u,e)
   figure
    subplot(4,3,1)%% roll
      for i=1:ns
-       plot(squeeze(time/2/pi*omega),squeeze(angles(1,i,:)));hold on
+       plot(squeeze(time/2/pi*MeanMotion),squeeze(angles(1,i,:)));hold on
        names(i)=[{strcat('sat',int2str(i))}];
      end
     ylabel('roll angle [deg]');xlabel('no. of orbits');grid on;hold off;legend(names);
     subplot(4,3,2)%% pitch
     for i=1:ns
-       plot(squeeze(time/2/pi*omega),squeeze(angles(2,i,:)));hold on
+       plot(squeeze(time/2/pi*MeanMotion),squeeze(angles(2,i,:)));hold on
     end
     ylabel('pitch angle [deg]');xlabel('no. of orbits');grid on;hold off;
     subplot(4,3,3)%%yaw
     for i=1:ns
-       plot(squeeze(time/2/pi*omega),squeeze(angles(3,i,:)));hold on
+       plot(squeeze(time/2/pi*MeanMotion),squeeze(angles(3,i,:)));hold on
     end
     ylabel('yaw angle [deg]');xlabel('no. of orbits');grid on;hold off
     subplot(4,3,4)%%x
     for i=1:ns
-       plot(squeeze(time/2/pi*omega),squeeze(sst(1,i,:)));hold on
+       plot(squeeze(time/2/pi*MeanMotion),squeeze(sst(1,i,:)));hold on
     end
     ylabel('x [m]');xlabel('no. of orbits');grid on;hold off
     subplot(4,3,5)%%y
     for i=1:ns
-       plot(squeeze(time/2/pi*omega),squeeze(sst(2,i,:)));hold on
+       plot(squeeze(time/2/pi*MeanMotion),squeeze(sst(2,i,:)));hold on
     end
     ylabel('y [m]');xlabel('no. of orbits');grid on;hold off
     subplot(4,3,6)%%z
     for i=1:ns
-       plot(squeeze(time/2/pi*omega),squeeze(sst(3,i,:)));hold on
+       plot(squeeze(time/2/pi*MeanMotion),squeeze(sst(3,i,:)));hold on
     end
     ylabel('z [m]');xlabel('no. of orbits');grid on;hold off
     subplot(4,3,7)%%u1
     for i=1:ns
-       plot(squeeze(time/2/pi*omega),squeeze(u(1,i,:)));hold on
+       plot(squeeze(time/2/pi*MeanMotion),squeeze(u(1,i,:)));hold on
     end
     ylabel('u1');xlabel('no. of orbits');grid on;hold off
     subplot(4,3,8)%%u2
     for i=1:ns
-       plot(squeeze(time/2/pi*omega),squeeze(u(2,i,:)));hold on
+       plot(squeeze(time/2/pi*MeanMotion),squeeze(u(2,i,:)));hold on
     end
     ylabel('u2');xlabel('no. of orbits');grid on;hold off
     subplot(4,3,9)%%u3
     for i=1:ns
-       plot(squeeze(time/2/pi*omega),squeeze(u(3,i,:)));hold on
+       plot(squeeze(time/2/pi*MeanMotion),squeeze(u(3,i,:)));hold on
     end
     ylabel('u3');xlabel('no. of orbits');grid on;hold off
     
     subplot(4,3,10)%%u
     for i=1:ns
-       plot(squeeze(time/2/pi*omega),squeeze(sst(4,i,:)));hold on
+       plot(squeeze(time/2/pi*MeanMotion),squeeze(sst(4,i,:)));hold on
     end
     ylabel('u [m/s]');xlabel('no. of orbits');grid on;hold off
     subplot(4,3,11)%%v
     for i=1:ns
-       plot(squeeze(time/2/pi*omega),squeeze(sst(5,i,:)));hold on
+       plot(squeeze(time/2/pi*MeanMotion),squeeze(sst(5,i,:)));hold on
     end
     ylabel('v [m/s]');xlabel('no. of orbits');grid on;hold off
     subplot(4,3,12)%%w
     for i=1:ns
-       plot(squeeze(time/2/pi*omega),squeeze(sst(6,i,:)));hold on
+       plot(squeeze(time/2/pi*MeanMotion),squeeze(sst(6,i,:)));hold on
     end
     ylabel('w [m/s]');xlabel('no. of orbits');grid on;hold off
     
@@ -1070,9 +1070,9 @@ function plotting(angles,sst,time,ns,omega,u,e)
   xzyplane=csvread('zxyplane.csv');
   figure
     %plot(traub(:,1),traub(:,2),xzplane(1,:),xzplane(3,:),xzyplane(1,:),xzyplane(3,:),squeeze(sst(1,i,:)),squeeze(sst(3,i,:)))
-    plot(traub(:,1),traub(:,2),xzplane(1,:),xzplane(3,:),xzyplane(1,:),xzyplane(3,:),squeeze(sst(1,i,:)),squeeze(sst(3,i,:)))
-    xlabel('X [m]','FontSize', 40);ylabel('Y [m]','FontSize', 40);legend('Traub','this research in-plane only','this research without wake','this research with wake','last','FontSize', 40);grid on;axis equal;
-    set(gca,'FontSize',40);set(gcf,'units','centimeters','position',[0,0,60,80]);axis([-1400 300 -400 600]);hold off;
+    plot(traub(:,1),traub(:,2),xzplane(1,:),xzplane(3,:),squeeze(sst(1,i,:)),squeeze(sst(3,i,:)),xzyplane(1,:),xzyplane(3,:))
+    xlabel('X [m]','FontSize', 40);ylabel('Y [m]','FontSize', 40);legend('Traub et al. [4] ','this research in-plane only','this research in-plane, wake','this research in/out-of plane','FontSize', 40);grid on;axis equal;
+    set(gca,'FontSize',40);set(gcf,'units','centimeters','position',[0,0,40,40]);axis([-1400 300 -400 600]);hold off;
 
 end
 
