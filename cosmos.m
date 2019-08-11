@@ -27,11 +27,8 @@
 clear all;close all;clc;format shortEng;
 oldpath = path; path(oldpath,'..\matlabfunctions\')
 
-%% filenames
-modelfilename     =strcat('figures',filesep,'cocu.dae');
-
 %% simulation time constants
-totalTime   =10*90*60;               %% approximate multiples of orbit durations, in s
+totalTime         =10*90*60;    %% approximate multiples of orbit periods,[s]
 currentTime       =0;           %% now, should usually be 0
 time              =0;
 compStep          =9;          %% computational step size in s
@@ -39,48 +36,46 @@ lengthControlLoop =90;         %% in s
 timetemp  =0:compStep:lengthControlLoop; %% duration and interpolation timestep for each control loop
 %fprintf('\nnumber of float variables for each control loop: %d, size %f kbyte',size(timetemp,2)*(1+6+6+3)+6+1,(size(timetemp,2)*(1+6+6+3)+6+1)*4/1024); %% size of time vector, state vector, desired state vector and anglevector, C and MeanMotion of analytical solution
 
-%% initial conditions and desired statevector functions
+%% symbolic names of initial conditions and desired statevector functions
 sstInitialFunction=@IRSRendezvousInitial;
 sstDesiredFunction=@IRSRendezvousDesired;
 %sstDesiredFunction=@IvanovFormationFlightDesired;
 %sstInitialFunction=@IvanovFormationFlightInitial;
 
-%% initial conditions of ODE
+%% actual initial conditions of ODE
 [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satelliteMass,panelSurface]=sstInitialFunction(currentTime+timetemp); 
 
+%% settings for control
 [P,IR,A,B]=riccatiequation(MeanMotion);
 
 %% non-gravitational perturbations
 windpressure=rho/2*v^2;                   %% pascal
 wind        =[-1 0 0]' ;
 wind        =wind/sqrt(wind(1)^2+wind(2)^2+wind(3)^2);
-solarpressure=0;%2*4.5e-6;                %% pascal
-sunlight    =[0 1 0]'; 
-sunlight    =sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2);
 
 %refsurf=panelSurface*panels(1);
 refSurf=panelSurface*panels(3);
 
-%% forcevector determination
-deltaAngle=45;                            %% roll,pitch,yaw angle resolution
-alphas        =0:deltaAngle:360;          %% roll
-betas         =0:deltaAngle:180;          %% pitch 
-gammas        =0:deltaAngle:360;          %% yaw
-aeroscalingfactor=1; sunscalingfactor=1;  %% these are for visualization of vectors only
-totalforcevector =totalforcevectorfunction(wind,sunlight,panels(1),panels(2),panels(3),alphas,betas,gammas,panelSurface,aeroscalingfactor,solarpressure,sunscalingfactor,windpressure, deltaAngle);
+%% forcevector determination and its angular granulaty
+deltaAngle        =45;                   %% roll,pitch,yaw angle resolution
+alphas            =0:deltaAngle:360;     %% roll
+betas             =0:deltaAngle:180;     %% pitch 
+gammas            =0:deltaAngle:360;     %% yaw
+aeroscalingfactor =1; sunscalingfactor=1;%% these are for visualization of vectors only
+aeropressureforcevector =aeropressureforcevectorfunction(wind,panels(1),panels(2),panels(3),alphas,betas,gammas,panelSurface,aeroscalingfactor,windpressure);
 
 %% features
-% stop upon target conditions
-stopUponTarget=0;
-wakeAerodynamics=1;
+stopUponTarget=0;   %% stop upon target conditions
+wakeAerodynamics=1; %% use of wake aerodynamics
 activeMaster=1;     %% if 0 then passive Master
 
 %% parameters for visualization
 %! there are more parameters in the visualization function
-VIS_DO        =0;           %% do you want to create a google Earth/kml file/vizualization ? 0-no 1-yes
-VIS_SCALE     =100;         %% scales deployment, formation size
-VIS_ACC_FACTOR=120;         %% speeds up the Google Earth visualization
-VIS_STEP      =60;          %% visualization step size in s
+VIS_DO            =0;           %% do you want to create a google Earth/kml file/vizualization ? 0-no 1-yes
+VIS_SCALE         =100;         %% scales deployment, formation size
+VIS_ACC_FACTOR    =120;         %% speeds up the Google Earth visualization
+VIS_STEP          =60;          %% visualization step size in s
+VIS_MODELFILENAME =strcat('figures',filesep,'cocu.dae');
 fprintf('duration of movie without upper stage flight: %2.1f min\n',totalTime/VIS_ACC_FACTOR/60) %% length of animation in min: totaltime/vis_step/accelerationfactor/60
 
 %% some initializations
@@ -113,7 +108,7 @@ while currentTime<totalTime
     %x(:,1,j+1)=[0 0 0 0 0 0]';
     %utemp(:,1,j+1)=[-1.2 0 0]';
     for i=2:ns %% for each satellite but not the master satellite
-      [sstTemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),sstTemp(:,i,j),etemp(:,i,j),flops,windpressure,alphas,betas,gammas,totalforcevector,sstTemp(7,i,j),sstTemp(8,i,j),sstTemp(9,i,j),refSurf,satelliteMass,wakeAerodynamics,activeMaster);
+      [sstTemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),sstTemp(:,i,j),etemp(:,i,j),flops,windpressure,alphas,betas,gammas,aeropressureforcevector,sstTemp(7,i,j),sstTemp(8,i,j),sstTemp(9,i,j),refSurf,satelliteMass,wakeAerodynamics,activeMaster);
     end
     %% this is to interrupt when a condition, i.e. proximity is achieved, don't use if you start in proximity as for instance for formation flight 
     %if stopUponTarget && abs(sstTemp(1,2,j))<15 && abs(sstTemp(2,2,j))<1 && abs(sstTemp(3,2,j))<10 && sqrt(sstTemp(4,2,j)^2+sstTemp(5,2,j)^2+sstTemp(6,2,j)^2)<0.01
@@ -166,7 +161,7 @@ end
 
 %% map on globe and create kml file
 if VIS_DO
-  visualization(ns,time,VIS_SCALE*squeeze(sst(1,:,:)),VIS_SCALE*squeeze(sst(2,:,:)),VIS_SCALE*squeeze(sst(3,:,:)),altitude,anglesGE, modelfilename,radiusOfEarth,mu,VIS_STEP,VIS_ACC_FACTOR)
+  visualization(ns,time,VIS_SCALE*squeeze(sst(1,:,:)),VIS_SCALE*squeeze(sst(2,:,:)),VIS_SCALE*squeeze(sst(3,:,:)),altitude,anglesGE, VIS_MODELFILENAME,radiusOfEarth,mu,VIS_STEP,VIS_ACC_FACTOR)
 end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -208,8 +203,8 @@ function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satellite
 %% maneuver duration for the case described is: 4.2+14.2
 
   %% only one independent satellite
-  ns=2;
-  satelliteMass=10;
+  ns=2;                         %% number of satellites
+  satelliteMass=10;             %% [kg]
   argumentOfPerigeeAtTe0=0;     %% not used yet
   trueAnomalyAtTe0=0;           %% not used yet
   %% other constants
@@ -302,23 +297,16 @@ function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,f
   usedTotalForceVector=zeros(3,size(alphas,2),size(betas,2),size(gammas,2));
   %% compute control vector
   controlVector=-IR*B'*P*e;
-  flops=flops+1e6;
-  
-  %% passive master
-  if activeMaster
-    %% active master
+  flops=flops+1e6; 
+
+  if activeMaster       %% active master    
     maxforceVectorOfMaster=-2.8*windpressure*refSurf*[1 0 0]';
-    %% wake aerodynamics
-    if wakeAerodynamics
+    if wakeAerodynamics %% wake aerodynamics
       if abs(sst0(2))<1.5 && abs(sst0(3))< 1.5 %% is sat2 aligned with sat1?
-        if sst0(1) < 0 %% is sat2 before sat1?
+        if sst0(1) <= 0 %% is sat2 before sat1?
           maxforceVectorOfMaster=maxforceVectorOfMaster/10;
-          fprintf('m')
-        elseif sst0(1) > 0 %% is sat2 before sat2?
+        else            %% is sat2 before sat2?
           totalforcevector(1,:,:,:)=totalforcevector(1,:,:,:)/10;
-          fprintf('s')
-        else
-          fprint('\n error');
         end
       end
     end
@@ -330,7 +318,7 @@ function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,f
       end
     end
     [forceVector,alphaOpt,betaOpt,gammaOpt]=findBestAerodynamicAngles(usedTotalForceVector,controlVector,alphas,betas,gammas,oldAlphaOpt,oldBetaOpt,oldGammaOpt);
-  else
+  else                  %% passive master; wake aerodynamics not implemented
     forceVectorOfMaster=-1/2*2.8*windpressure*refSurf*[1 0 0]';  
       for k=1:size(gammas,2)
         for j=1:size(betas,2)
@@ -340,38 +328,11 @@ function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,f
         end
       end
       [forceVector,alphaOpt,betaOpt,gammaOpt]=findBestAerodynamicAngles(usedTotalForceVector,controlVector,alphas,betas,gammas,oldAlphaOpt,oldBetaOpt,oldGammaOpt);
-  end
-  
-  
-  
-  
-  %alphaOpt,betaOpt,gammaOpt
-  %controlVector'
-  %forceVectorOfMaster'/satelliteMass
-  %forceVector'/satelliteMass
-  %satelliteMass
-  %input('a')
-  
-  %! add computational relaxation here
-%  alphaOpt=0;betaOpt=0;gammaOpt=0;
-  %{
-  forceVector2=controlVector*satelliteMass-forceVectorOfMaster;
-  forceVector'
-  forceVector2'
-  input('a')
-  %}
-  %! add vehicle inertia here
+  end                   %% passive/active master switch
   %% solve ODE with backward Euler step
   ssttemptemp(1:6)=(A*sst0(1:6)+B*forceVector/satelliteMass)*deltat+sst0(1:6);
   ssttemptemp(7:9)=[alphaOpt betaOpt gammaOpt]';
   flops=flops+1e6; 
-  %A
-  %sst0(1:6)'
-  %B
-  %forceVector
-  %ssttemptemp(1:6)
-  %input('b')
-  
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

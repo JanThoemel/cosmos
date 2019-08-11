@@ -2,7 +2,7 @@
 close all;clc;clear all;
 
 %% some set-up
-deltaangle=45;
+deltaangle=15;
 alpha=0:deltaangle:360; %% roll
 beta =0:deltaangle:180; %% pitch 
 gamma=0:deltaangle:360; %% yaw
@@ -18,16 +18,15 @@ altitude =340000; %% in m
 [rho,v]=orbitalproperties(altitude);
 %windpressure=rho/2*v^2;%% pascal
 %wind=[-1 0 0]' ;
-windpressure=rho/2*v^2;%% pascal
+windpressure=0;%rho/2*v^2;%% pascal
 wind=[-1 0 0]' ;
 %wind=wind/sqrt(wind(1)^2+wind(2)^2+wind(3)^2);
-solarpressure=0;%2*4.5e-6; %% pascal
-sunlight=[1 1 1]'; 
+
+solarpressure=2*4.5e-6; %% pascal
+sunlight=[-1 0 0]'; 
 sunlight=sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2);
 
 oldalphaopt=0;oldbetaopt=00;oldgammaopt=0;
-%% the control vector
-controlvector=2e-07*[-0.001447 -0.003021 -0.999994]';
 
 %% the space craft
 panelsurface=0.01; %m^2
@@ -41,15 +40,19 @@ end
 
 
 %% %% the possible forcevectors
-totalforcevector = totalforcevectorfunction(wind,sunlight,noxpanels,noypanels,nozpanels,alpha,beta,gamma,panelsurface,aeroscalingfactor,solarpressure,sunscalingfactor,windpressure, deltaangle);
+%totalforcevector = totalforcevectorfunction(wind,sunlight,noxpanels,noypanels,nozpanels,alpha,beta,gamma,panelsurface,aeroscalingfactor,solarpressure,sunscalingfactor,windpressure, deltaangle);
+solarpressureforcevector = solarpressureforcevectorfunction(sunlight,noxpanels,noypanels,nozpanels,alpha,beta,gamma,panelsurface,solarpressure,sunscalingfactor);
+
+%% the control vector
+controlvector=2e-07*[-0.001447 -0.003021 -0.999994]';
 
 %% find the good force vector
-[forcevector,alphaopt,betaopt,gammaopt]=findBestAerodynamicAngles(totalforcevector,controlvector,alpha,beta,gamma,oldalphaopt,oldbetaopt,oldgammaopt);
+%[forcevector,alphaopt,betaopt,gammaopt]=findBestAerodynamicAngles(totalforcevector,controlvector,alpha,beta,gamma,oldalphaopt,oldbetaopt,oldgammaopt);
 
 %% the result
-fprintf('\n alpha %3.1f beta %3.1f gamma %3.1f \n',alphaopt,betaopt,gammaopt);
-magfv=sqrt(forcevector(1)^2+forcevector(2)^2+forcevector(3)^2);
-fprintf('\n magfv%+1.0e fvx%+f fvy%+f fvz%+f',magfv,forcevector(1)/magfv,forcevector(2)/magfv,forcevector(3)/magfv);
+%fprintf('\n alpha %3.1f beta %3.1f gamma %3.1f \n',alphaopt,betaopt,gammaopt);
+%magfv=sqrt(forcevector(1)^2+forcevector(2)^2+forcevector(3)^2);
+%fprintf('\n magfv%+1.0e fvx%+f fvy%+f fvz%+f',magfv,forcevector(1)/magfv,forcevector(2)/magfv,forcevector(3)/magfv);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
