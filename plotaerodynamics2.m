@@ -41,7 +41,7 @@ end
 
 %% %% the possible forcevectors
 %totalforcevector = totalforcevectorfunction(wind,sunlight,noxpanels,noypanels,nozpanels,alpha,beta,gamma,panelsurface,aeroscalingfactor,solarpressure,sunscalingfactor,windpressure, deltaangle);
-solarpressureforcevector = solarpressureforcevectorfunction(sunlight,noxpanels,noypanels,nozpanels,alpha,beta,gamma,panelsurface,solarpressure,sunscalingfactor);
+solarpressureforcevector = solarpressureforcevectorfunction(sunlight,noxpanels,noypanels,nozpanels,alpha,beta,gamma,panelsurface,solarpressure);
 
 %% the control vector
 controlvector=2e-07*[-0.001447 -0.003021 -0.999994]';

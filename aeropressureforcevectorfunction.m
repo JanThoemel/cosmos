@@ -1,9 +1,9 @@
-function aerototalforcevector = aeropressureforcevectorfunction(wind,noxpanels,noypanels,nozpanels,alphas,betas,gammas,panelSurface,aeroScalingFactor, windPressure)
+function aerototalforcevector = aeropressureforcevectorfunction(wind,noxpanels,noypanels,nozpanels,alphas,betas,gammas,panelSurface,windPressure)
   rotspeed=30;draw=0;
   %% %% the possible forcevectors
     fprintf('computing aerodynamics');  
     %% must be in dimensions of force, i.e. N
-    axislength=1.1*windPressure*panelSurface*aeroScalingFactor ;
+    axislength=1.1*windPressure*panelSurface ;
     Ry90=roty(90);
     %Rz90=rotz(90);
     Rx90=rotx(90);
@@ -73,7 +73,7 @@ function aerototalforcevector = aeropressureforcevectorfunction(wind,noxpanels,n
             end
           %%draw
           if draw
-              vectarrow([0 0 0],wind*windPressure*panelSurface*aeroScalingFactor);hold on;text(wind(1)*windPressure*panelSurface*aeroScalingFactor,wind(2)*windPressure*panelSurface*aeroScalingFactor,wind(3)*windPressure*panelSurface*aeroScalingFactor,"wind",'HorizontalAlignment','left','FontSize',6);
+              vectarrow([0 0 0],wind*windPressure*panelSurface);hold on;text(wind(1)*windPressure*panelSurface,wind(2)*windPressure*panelSurface,wind(3)*windPressure*panelSurface,"wind",'HorizontalAlignment','left','FontSize',6);
               axis([-axislength axislength -axislength axislength -axislength axislength]);
               if nozpanels
                 %%               
@@ -81,7 +81,7 @@ function aerototalforcevector = aeropressureforcevectorfunction(wind,noxpanels,n
                 pg2 = [(RzY*Ry*RzR*pz12')' ; (RzY*Ry*RzR*pz22')' ; (RzY*Ry*RzR*pz32')' ; (RzY*Ry*RzR*pz42')' ; (RzY*Ry*RzR*pz12')'];
                 pg3 = [(RzY*Ry*RzR*pz13')' ; (RzY*Ry*RzR*pz23')' ; (RzY*Ry*RzR*pz33')' ; (RzY*Ry*RzR*pz43')' ; (RzY*Ry*RzR*pz13')'];
                 %vectarrow([0 0 0],totalforcevectorz(:,i,j,k));hold on;
-                vectarrow([0 0 0],aeroforcevectorz*aeroScalingFactor);hold on;text(aeroforcevectorz(1),aeroforcevectorz(2),aeroforcevectorz(3),"aeroforce",'HorizontalAlignment','left','FontSize',6);
+                vectarrow([0 0 0],aeroforcevectorz);hold on;text(aeroforcevectorz(1),aeroforcevectorz(2),aeroforcevectorz(3),"aeroforce",'HorizontalAlignment','left','FontSize',6);
                 vectarrow([0 0 0],Igz);hold on;text(Igz(1),Igz(2),Igz(3),"normal",'HorizontalAlignment','left','FontSize',6);
                 line(pg(:,1), pg(:,2), pg(:,3));line(pg2(:,1), pg2(:,2), pg2(:,3));line(pg3(:,1), pg3(:,2), pg3(:,3));hold on;
                 axis([-axislength axislength -axislength axislength -axislength axislength]);
@@ -93,7 +93,7 @@ function aerototalforcevector = aeropressureforcevectorfunction(wind,noxpanels,n
                 pgx3 = [(RzY*Ry*RzR*-Ry90*pz13')' ; (RzY*Ry*RzR*-Ry90*pz23')' ; (RzY*Ry*RzR*-Ry90*pz33')' ; (RzY*Ry*RzR*-Ry90*pz43')' ; (RzY*Ry*RzR*-Ry90*pz13')'];
                 %vectarrow([0 0 0],totalforcevector(:,i,j,k)); hold on;
                 vectarrow([0 0 0],Igx);hold on;text(Igx(1),Igx(2),Igx(3),"normalx",'HorizontalAlignment','left','FontSize',6);hold on;
-                vectarrow([0 0 0],aeroforcevectorx*aeroScalingFactor);hold on;text(aeroforcevectorx(1),aeroforcevectorx(2),aeroforcevectorx(3),"aeroforcex",'HorizontalAlignment','left','FontSize',6);
+                vectarrow([0 0 0],aeroforcevectorx);hold on;text(aeroforcevectorx(1),aeroforcevectorx(2),aeroforcevectorx(3),"aeroforcex",'HorizontalAlignment','left','FontSize',6);
                 line(pgx(:,1), pgx(:,2), pgx(:,3));line(pgx2(:,1), pgx2(:,2), pgx2(:,3));line(pgx3(:,1), pgx3(:,2), pgx3(:,3));hold on;
                 axis([-axislength axislength -axislength axislength -axislength axislength]);
               end
@@ -104,11 +104,10 @@ function aerototalforcevector = aeropressureforcevectorfunction(wind,noxpanels,n
                 pgy3 = [(RzY*Ry*RzR*-Rx90*pz13')' ; (RzY*Ry*RzR*-Rx90*pz23')' ; (RzY*Ry*RzR*-Rx90*pz33')' ; (RzY*Ry*RzR*-Rx90*pz43')' ; (RzY*Ry*RzR*-Rx90*pz13')'];
                 %vectarrow([0 0 0],totalforcevector(:,i,j,k));hold on;                  
                 vectarrow([0 0 0],Igy);hold on;text(Igy(1),Igy(2),Igy(3),"normaly",'HorizontalAlignment','left','FontSize',6);
-                vectarrow([0 0 0],aeroforcevectory*aeroScalingFactor);hold on;text(aeroforcevectory(1),aeroforcevectory(2),aeroforcevectory(3),"aeroforcey",'HorizontalAlignment','left','FontSize',6);
+                vectarrow([0 0 0],aeroforcevectory);hold on;text(aeroforcevectory(1),aeroforcevectory(2),aeroforcevectory(3),"aeroforcey",'HorizontalAlignment','left','FontSize',6);
                 line(pgy(:,1), pgy(:,2), pgy(:,3));line(pgy2(:,1), pgy2(:,2), pgy2(:,3));line(pgy3(:,1), pgy3(:,2), pgy3(:,3));hold on;                        axis([-axislength axislength -axislength axislength -axislength axislength]);
               end
             %text(0,0,0,strcat('scalingfactor: ',int2str(scalingfactor)),'HorizontalAlignment','left','FontSize',6);
-            title(strcat('aeroscalingfactor: ',int2str(aeroScalingFactor),'  sunscalingfactor: ',int2str(sunScalingFactor)));
             xlabel('fx [N]');ylabel('fy [N]');zlabel('fz [N]');
             axis([-axislength axislength -axislength axislength -axislength axislength]);
             hold off;

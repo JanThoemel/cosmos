@@ -53,6 +53,10 @@ windpressure=rho/2*v^2;                   %% pascal
 wind        =[-1 0 0]' ;
 wind        =wind/sqrt(wind(1)^2+wind(2)^2+wind(3)^2);
 
+solarpressure=2*4.5e-6; %% pascal
+sunlight=[-1 0 0]'; 
+sunlight=sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2);
+
 %refsurf=panelSurface*panels(1);
 refSurf=panelSurface*panels(3);
 
@@ -62,7 +66,10 @@ alphas            =0:deltaAngle:360;     %% roll
 betas             =0:deltaAngle:180;     %% pitch 
 gammas            =0:deltaAngle:360;     %% yaw
 aeroscalingfactor =1; sunscalingfactor=1;%% these are for visualization of vectors only
-aeropressureforcevector =aeropressureforcevectorfunction(wind,panels(1),panels(2),panels(3),alphas,betas,gammas,panelSurface,aeroscalingfactor,windpressure);
+
+aeropressureforcevector =aeropressureforcevectorfunction(wind,panels(1),panels(2),panels(3),alphas,betas,gammas,panelSurface,windpressure);
+solarpressureforcevector = solarpressureforcevectorfunction(sunlight,panels(1),panels(2),panels(3),alphas,betas,gammas,panelSurface,solarpressure);
+
 
 %% features
 stopUponTarget=0;   %% stop upon target conditions
@@ -108,7 +115,7 @@ while currentTime<totalTime
     %x(:,1,j+1)=[0 0 0 0 0 0]';
     %utemp(:,1,j+1)=[-1.2 0 0]';
     for i=2:ns %% for each satellite but not the master satellite
-      [sstTemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),sstTemp(:,i,j),etemp(:,i,j),flops,windpressure,alphas,betas,gammas,aeropressureforcevector,sstTemp(7,i,j),sstTemp(8,i,j),sstTemp(9,i,j),refSurf,satelliteMass,wakeAerodynamics,activeMaster);
+      [sstTemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),sstTemp(:,i,j),etemp(:,i,j),flops,windpressure,alphas,betas,gammas,aeropressureforcevector,solarpressureforcevector,sstTemp(7,i,j),sstTemp(8,i,j),sstTemp(9,i,j),refSurf,satelliteMass,wakeAerodynamics,activeMaster);
     end
     %% this is to interrupt when a condition, i.e. proximity is achieved, don't use if you start in proximity as for instance for formation flight 
     %if stopUponTarget && abs(sstTemp(1,2,j))<15 && abs(sstTemp(2,2,j))<1 && abs(sstTemp(3,2,j))<10 && sqrt(sstTemp(4,2,j)^2+sstTemp(5,2,j)^2+sstTemp(6,2,j)^2)<0.01
@@ -291,7 +298,7 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,flops,windpressure,alphas,betas,gammas,totalforcevector,oldAlphaOpt,oldBetaOpt,oldGammaOpt,refSurf,satelliteMass,wakeAerodynamics,activeMaster)
+function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,flops,windpressure,alphas,betas,gammas,aeropressureforcevector,solarpressureforcevector,oldAlphaOpt,oldBetaOpt,oldGammaOpt,refSurf,satelliteMass,wakeAerodynamics,activeMaster)
 %hcwequation2 Hill-Clohessy-Wiltshire equation
 
   usedTotalForceVector=zeros(3,size(alphas,2),size(betas,2),size(gammas,2));
@@ -306,14 +313,14 @@ function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,f
         if sst0(1) <= 0 %% is sat2 before sat1?
           maxforceVectorOfMaster=maxforceVectorOfMaster/10;
         else            %% is sat2 before sat2?
-          totalforcevector(1,:,:,:)=totalforcevector(1,:,:,:)/10;
+          aeropressureforcevector(1,:,:,:)=aeropressureforcevector(1,:,:,:)/10;
         end
       end
     end
     for k=1:size(gammas,2)
       for j=1:size(betas,2)
         for i=1:size(alphas,2)
-          usedTotalForceVector(:,i,j,k)=2*totalforcevector(:,i,j,k)-maxforceVectorOfMaster(:);
+          usedTotalForceVector(:,i,j,k)=2*aeropressureforcevector(:,i,j,k)-maxforceVectorOfMaster(:);
         end
       end
     end
@@ -323,7 +330,7 @@ function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,f
       for k=1:size(gammas,2)
         for j=1:size(betas,2)
           for i=1:size(alphas,2)
-            usedTotalForceVector(:,i,j,k)=totalforcevector(:,i,j,k)-forceVectorOfMaster(:);
+            usedTotalForceVector(:,i,j,k)=aeropressureforcevector(:,i,j,k)-forceVectorOfMaster(:);
           end
         end
       end
