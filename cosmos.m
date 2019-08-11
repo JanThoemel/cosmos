@@ -115,7 +115,7 @@ while currentTime<totalTime
     %x(:,1,j+1)=[0 0 0 0 0 0]';
     %utemp(:,1,j+1)=[-1.2 0 0]';
     for i=2:ns %% for each satellite but not the master satellite
-      [sstTemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),sstTemp(:,i,j),etemp(:,i,j),flops,windpressure,alphas,betas,gammas,aeropressureforcevector,solarpressureforcevector,sstTemp(7,i,j),sstTemp(8,i,j),sstTemp(9,i,j),refSurf,satelliteMass,wakeAerodynamics,activeMaster);
+      [sstTemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),sstTemp(:,i,j),etemp(:,i,j),flops,windpressure,alphas,betas,gammas,aeropressureforcevector,solarpressureforcevector,sstTemp(7,i,j),sstTemp(8,i,j),sstTemp(9,i,j),refSurf,satelliteMass,wakeAerodynamics,activeMaster,currentTime+timetemp(j));
     end
     %% this is to interrupt when a condition, i.e. proximity is achieved, don't use if you start in proximity as for instance for formation flight 
     %if stopUponTarget && abs(sstTemp(1,2,j))<15 && abs(sstTemp(2,2,j))<1 && abs(sstTemp(3,2,j))<10 && sqrt(sstTemp(4,2,j)^2+sstTemp(5,2,j)^2+sstTemp(6,2,j)^2)<0.01
@@ -298,8 +298,13 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,flops,windpressure,alphas,betas,gammas,aeropressureforcevector,solarpressureforcevector,oldAlphaOpt,oldBetaOpt,oldGammaOpt,refSurf,satelliteMass,wakeAerodynamics,activeMaster)
+function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,flops,windpressure,alphas,betas,gammas,aeropressureforcevector,solarpressureforcevector,oldAlphaOpt,oldBetaOpt,oldGammaOpt,refSurf,satelliteMass,wakeAerodynamics,activeMaster,currentTime0)
 %hcwequation2 Hill-Clohessy-Wiltshire equation
+
+  %% rotate sunforcevector
+  %rotatedsunforcevector=f(solarpressureforcevector,currentTime0);
+
+
 
   usedTotalForceVector=zeros(3,size(alphas,2),size(betas,2),size(gammas,2));
   %% compute control vector
@@ -321,6 +326,8 @@ function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,f
       for j=1:size(betas,2)
         for i=1:size(alphas,2)
           usedTotalForceVector(:,i,j,k)=2*aeropressureforcevector(:,i,j,k)-maxforceVectorOfMaster(:);
+          %% add sunvector
+          %usedTotalForceVector(:,i,j,k)=usedTotalForceVector(:,i,j,k)+sunvector;
         end
       end
     end
@@ -331,6 +338,8 @@ function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,f
         for j=1:size(betas,2)
           for i=1:size(alphas,2)
             usedTotalForceVector(:,i,j,k)=aeropressureforcevector(:,i,j,k)-forceVectorOfMaster(:);
+            %% add sunvector
+            %usedTotalForceVector(:,i,j,k)=usedTotalForceVector(:,i,j,k)+sunvector;
           end
         end
       end
