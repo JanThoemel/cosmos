@@ -49,13 +49,8 @@ sstDesiredFunction=@IRSRendezvousDesired;
 [P,IR,A,B]=riccatiequation(MeanMotion);
 
 %% non-gravitational perturbations
-windpressure=rho/2*v^2;                   %% pascal
-wind        =[-1 0 0]' ;
-wind        =wind/sqrt(wind(1)^2+wind(2)^2+wind(3)^2);
-
-solarpressure=2*4.5e-6; %% pascal
-sunlight=[-1 0 0]'; 
-sunlight=sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2);
+wind        =rho/2*v^2*[-1 0 0]';
+sunlight     =2*4.5e-6*[0 0 -1]';        %% at reference location, needs to be rotated later
 
 %refsurf=panelSurface*panels(1);
 refSurf=panelSurface*panels(3);
@@ -65,10 +60,9 @@ deltaAngle        =45;                   %% roll,pitch,yaw angle resolution
 alphas            =0:deltaAngle:360;     %% roll
 betas             =0:deltaAngle:180;     %% pitch 
 gammas            =0:deltaAngle:360;     %% yaw
-aeroscalingfactor =1; sunscalingfactor=1;%% these are for visualization of vectors only
 
-aeropressureforcevector =aeropressureforcevectorfunction(wind,panels(1),panels(2),panels(3),alphas,betas,gammas,panelSurface,windpressure);
-solarpressureforcevector = solarpressureforcevectorfunction(sunlight,panels(1),panels(2),panels(3),alphas,betas,gammas,panelSurface,solarpressure);
+aeropressureforcevector =aeropressureforcevectorfunction(wind,panelSurface,panels(1),panels(2),panels(3),alphas,betas,gammas);
+solarpressureforcevector = solarpressureforcevectorfunction(sunlight,panelSurface,panels(1),panels(2),panels(3),alphas,betas,gammas);
 
 
 %% features
@@ -115,7 +109,7 @@ while currentTime<totalTime
     %x(:,1,j+1)=[0 0 0 0 0 0]';
     %utemp(:,1,j+1)=[-1.2 0 0]';
     for i=2:ns %% for each satellite but not the master satellite
-      [sstTemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),sstTemp(:,i,j),etemp(:,i,j),flops,windpressure,alphas,betas,gammas,aeropressureforcevector,solarpressureforcevector,sstTemp(7,i,j),sstTemp(8,i,j),sstTemp(9,i,j),refSurf,satelliteMass,wakeAerodynamics,activeMaster,currentTime+timetemp(j));
+      [sstTemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),sstTemp(:,i,j),etemp(:,i,j),flops,sqrt(wind(1)^2+wind(2)^2+wind(3)^2),sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2),alphas,betas,gammas,aeropressureforcevector,solarpressureforcevector,sstTemp(7,i,j),sstTemp(8,i,j),sstTemp(9,i,j),refSurf,satelliteMass,wakeAerodynamics,activeMaster,currentTime+timetemp(j));
     end
     %% this is to interrupt when a condition, i.e. proximity is achieved, don't use if you start in proximity as for instance for formation flight 
     %if stopUponTarget && abs(sstTemp(1,2,j))<15 && abs(sstTemp(2,2,j))<1 && abs(sstTemp(3,2,j))<10 && sqrt(sstTemp(4,2,j)^2+sstTemp(5,2,j)^2+sstTemp(6,2,j)^2)<0.01
@@ -298,11 +292,14 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,flops,windpressure,alphas,betas,gammas,aeropressureforcevector,solarpressureforcevector,oldAlphaOpt,oldBetaOpt,oldGammaOpt,refSurf,satelliteMass,wakeAerodynamics,activeMaster,currentTime0)
+function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,flops,windPressure,solarPressure,alphas,betas,gammas,aeropressureforcevector,solarpressureforcevector,oldAlphaOpt,oldBetaOpt,oldGammaOpt,refSurf,satelliteMass,wakeAerodynamics,activeMaster,currentTime0)
 %hcwequation2 Hill-Clohessy-Wiltshire equation
 
-  %% rotate sunforcevector
-  %rotatedsunforcevector=f(solarpressureforcevector,currentTime0);
+
+  %% rotate sunforcevector if necessary
+  % if norm sun>0 && wrapTo360(MeanMotion*currentTime0)<acosd(R/(R+alt)) && wrapTo360(MeanMotion*currentTime0)<360-acosd(R/(R+alt))
+  %   rotatedsunforcevector=f(solarpressureforcevector,currentTime0);
+  % end
 
 
 
@@ -312,7 +309,7 @@ function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,f
   flops=flops+1e6; 
 
   if activeMaster       %% active master    
-    maxforceVectorOfMaster=-2.8*windpressure*refSurf*[1 0 0]';
+    maxforceVectorOfMaster=-2.8*windPressure*refSurf*[1 0 0]';
     if wakeAerodynamics %% wake aerodynamics
       if abs(sst0(2))<1.5 && abs(sst0(3))< 1.5 %% is sat2 aligned with sat1?
         if sst0(1) <= 0 %% is sat2 before sat1?
@@ -327,19 +324,19 @@ function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,f
         for i=1:size(alphas,2)
           usedTotalForceVector(:,i,j,k)=2*aeropressureforcevector(:,i,j,k)-maxforceVectorOfMaster(:);
           %% add sunvector
-          %usedTotalForceVector(:,i,j,k)=usedTotalForceVector(:,i,j,k)+sunvector;
+          %usedTotalForceVector(:,i,j,k)=usedTotalForceVector(:,i,j,k)+rotatedsunforcevector;
         end
       end
     end
     [forceVector,alphaOpt,betaOpt,gammaOpt]=findBestAerodynamicAngles(usedTotalForceVector,controlVector,alphas,betas,gammas,oldAlphaOpt,oldBetaOpt,oldGammaOpt);
   else                  %% passive master; wake aerodynamics not implemented
-    forceVectorOfMaster=-1/2*2.8*windpressure*refSurf*[1 0 0]';  
+    forceVectorOfMaster=-1/2*2.8*windPressure*refSurf*[1 0 0]';  
       for k=1:size(gammas,2)
         for j=1:size(betas,2)
           for i=1:size(alphas,2)
             usedTotalForceVector(:,i,j,k)=aeropressureforcevector(:,i,j,k)-forceVectorOfMaster(:);
             %% add sunvector
-            %usedTotalForceVector(:,i,j,k)=usedTotalForceVector(:,i,j,k)+sunvector;
+            %usedTotalForceVector(:,i,j,k)=usedTotalForceVector(:,i,j,k)+rotatedsunforcevector;
           end
         end
       end

@@ -1,5 +1,7 @@
-function solarpressureforcevector = solarpressureforcevectorfunction(sunlight,noxpanels,noypanels,nozpanels,alphas,betas,gammas,panelSurface,solarPressure)
+function solarpressureforcevector = solarpressureforcevectorfunction(sunlight,panelSurface,noxpanels,noypanels,nozpanels,alphas,betas,gammas)
   rotspeed=30;draw=0;
+  solarPressure=sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2);
+  sunlight     =sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2);
   fprintf('computing sunlightdynamics');  
   %% must be in dimensions of force, i.e. N
   axislength=1.1*solarPressure*panelSurface;
@@ -32,40 +34,40 @@ function solarpressureforcevector = solarpressureforcevectorfunction(sunlight,no
           Igz=RzY*Ry*RzR*Iz;
           [thetasun(i,j,k),phisun(i,j,k),Igz2]=thetaphi1(sunlight,Igz);
           [sundragcoef(i,j,k), sunliftcoef(i,j,k) ]=sundragliftcoef(thetasun(i,j,k));                                                               
-          sunforcevectorz=-sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2)   * sundragcoef(i,j,k)*solarPressure*panelSurface;
+          sunforcevectorz=-sunlight   * sundragcoef(i,j,k)*solarPressure*panelSurface;
           ax=cross(sunlight,Igz2) ;
           if norm(ax)~=0
             liftvector = rodrigues_rot(sunlight,ax,90/180*pi);
           else
             liftvector = [0 0 0]';
           end            
-          sunforcevectorz=nozpanels*(-liftvector/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2)  *sunliftcoef(i,j,k)*solarPressure*panelSurface  +  sunforcevectorz);
+          sunforcevectorz=nozpanels*(-liftvector  *sunliftcoef(i,j,k)*solarPressure*panelSurface  +  sunforcevectorz);
         end
         if noxpanels %% xpanel
           Igx=RzY*Ry*RzR*Ix;
           [thetasun(i,j,k),phisun(i,j,k),Igx2]=thetaphi1(sunlight,Igx);
           [sundragcoef(i,j,k),sunliftcoef(i,j,k)]=sundragliftcoef(thetasun(i,j,k));
-          sunforcevectorx=-sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2)           *  sundragcoef(i,j,k)*solarPressure*panelSurface;
+          sunforcevectorx=-sunlight           *  sundragcoef(i,j,k)*solarPressure*panelSurface;
           ax=cross(sunlight,Igx2);
           if norm(ax)~=0
             liftvector = rodrigues_rot(sunlight,ax,90/180*pi);
           else
             liftvector = [0 0 0]';
           end
-          sunforcevectorx=noxpanels*(-liftvector/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2)         *  sunliftcoef(i,j,k)*solarPressure*panelSurface  +  sunforcevectorx);
+          sunforcevectorx=noxpanels*(-liftvector         *  sunliftcoef(i,j,k)*solarPressure*panelSurface  +  sunforcevectorx);
         end
         if noypanels %% ypanel
           Igy=RzY*Ry*RzR*Iy;
           [thetasun(i,j,k),phisun(i,j,k),Igy2]=thetaphi1(sunlight,Igy);
           [sundragcoef(i,j,k),sunliftcoef(i,j,k)]=sundragliftcoef(thetasun(i,j,k));                                       
-          sunforcevectory=-sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2)     *   sundragcoef(i,j,k)*solarPressure*panelSurface;
+          sunforcevectory=-sunlight     *   sundragcoef(i,j,k)*solarPressure*panelSurface;
           ax=cross(sunlight,Igy2);
           if norm(ax)~=0
             liftvector = rodrigues_rot(sunlight,ax,90/180*pi);
           else
             liftvector = [0 0 0]';
           end                        
-          sunforcevectory=noypanels*(-liftvector/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2)   *    sunliftcoef(i,j,k)*solarPressure*panelSurface+sunforcevectory);
+          sunforcevectory=noypanels*(-liftvector   *    sunliftcoef(i,j,k)*solarPressure*panelSurface+sunforcevectory);
         end
         %%draw
         if draw

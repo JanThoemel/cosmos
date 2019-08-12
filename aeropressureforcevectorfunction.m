@@ -1,5 +1,7 @@
-function aerototalforcevector = aeropressureforcevectorfunction(wind,noxpanels,noypanels,nozpanels,alphas,betas,gammas,panelSurface,windPressure)
+function aerototalforcevector = aeropressureforcevectorfunction(wind,panelSurface,noxpanels,noypanels,nozpanels,alphas,betas,gammas)
   rotspeed=30;draw=0;
+  windPressure=sqrt(wind(1)^2+wind(2)^2+wind(3)^2);
+  wind        =wind/sqrt(wind(1)^2+wind(2)^2+wind(3)^2); 
   %% %% the possible forcevectors
     fprintf('computing aerodynamics');  
     %% must be in dimensions of force, i.e. N
@@ -25,9 +27,6 @@ function aerototalforcevector = aeropressureforcevectorfunction(wind,noxpanels,n
     for k=1:size(gammas,2) %% yaw
       for j=1:size(betas,2) %% pitch
         for i=1:size(alphas,2) %% roll
-          %k=1; %% yaw
-          %j=3; %% pitch
-          %i=1;%% roll
           %% rotation matrizes
           RzY =[cosd(gammas(k)) -sind(gammas(k)) 0; sind(gammas(k)) cosd(gammas(k)) 0; 0 0 1]; %%yaw
           Ry =[cosd(betas(j))  0 sind(betas(j))  ; 0 1 0                          ; -sind(betas(j)) 0 cosd(betas(j))]; %% pitch
@@ -36,40 +35,40 @@ function aerototalforcevector = aeropressureforcevectorfunction(wind,noxpanels,n
             Igz=RzY*Ry*RzR*Iz;
               [thetaaero(i,j,k),phiaero(i,j,k),Igz2]=thetaphi1(wind, Igz);
               [aerodragcoef(i,j,k),aeroliftcoef(i,j,k)]=aerodragliftcoef(thetaaero(i,j,k));
-              aeroforcevectorz=-wind/sqrt(wind(1)^2+wind(2)^2+wind(3)^2)           *    aerodragcoef(i,j,k)*windPressure*panelSurface;
+              aeroforcevectorz=-wind           *    aerodragcoef(i,j,k)*windPressure*panelSurface;
               ax=cross(wind,Igz2);
               if norm(ax)~=0
                 liftvector = rodrigues_rot(wind,ax,90/180*pi);
               else
                 liftvector = [0 0 0]';
               end
-              aeroforcevectorz=nozpanels*(-liftvector/sqrt(wind(1)^2+wind(2)^2+wind(3)^2)      *    aeroliftcoef(i,j,k)*windPressure*panelSurface + aeroforcevectorz);
+              aeroforcevectorz=nozpanels*(-liftvector      *    aeroliftcoef(i,j,k)*windPressure*panelSurface + aeroforcevectorz);
             end 
           if noxpanels %% xpanel
             Igx=RzY*Ry*RzR*Ix;
               [thetaaero(i,j,k),phiaero(i,j,k),Igx2]=thetaphi1(wind, Igx);
               [aerodragcoef(i,j,k),aeroliftcoef(i,j,k)]=aerodragliftcoef(thetaaero(i,j,k));
-              aeroforcevectorx=-wind/sqrt(wind(1)^2+wind(2)^2+wind(3)^2)                         *  aerodragcoef(i,j,k)*windPressure*panelSurface;
+              aeroforcevectorx=-wind                         *  aerodragcoef(i,j,k)*windPressure*panelSurface;
               ax=cross(wind,Igx2);
               if norm(ax)~=0
                 liftvector = rodrigues_rot(wind,ax,90/180*pi);
               else
                 liftvector = [0 0 0]';
               end
-              aeroforcevectorx=noxpanels*(-liftvector/sqrt(liftvector(1)^2+liftvector(2)^2+liftvector(3)^2) *  aeroliftcoef(i,j,k)*windPressure*panelSurface + aeroforcevectorx);
+              aeroforcevectorx=noxpanels*(-liftvector *  aeroliftcoef(i,j,k)*windPressure*panelSurface + aeroforcevectorx);
           end
             if noypanels %% xpanel
             Igy=RzY*Ry*RzR*Iy;
               [thetaaero(i,j,k),phiaero(i,j,k),Igy2]=thetaphi1(wind, Igy);
               [aerodragcoef(i,j,k),aeroliftcoef(i,j,k)]=aerodragliftcoef(thetaaero(i,j,k));             
-              aeroforcevectory=-wind/sqrt(wind(1)^2+wind(2)^2+wind(3)^2)        *  aerodragcoef(i,j,k)*windPressure*panelSurface;
+              aeroforcevectory=-wind        *  aerodragcoef(i,j,k)*windPressure*panelSurface;
               ax=cross(wind,Igy2) ;
               if norm(ax)~=0
                 liftvector = rodrigues_rot(wind,ax,90/180*pi);
               else
                 liftvector = [0 0 0]';
               end            
-              aeroforcevectory=noypanels*(-liftvector/sqrt(wind(1)^2+wind(2)^2+wind(3)^2)  *  aeroliftcoef(i,j,k)*windPressure*panelSurface + aeroforcevectory);
+              aeroforcevectory=noypanels*(-liftvector  *  aeroliftcoef(i,j,k)*windPressure*panelSurface + aeroforcevectory);
             end
           %%draw
           if draw
