@@ -308,6 +308,8 @@ function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,f
       for j=1:size(betas,2)
         for i=1:size(alphas,2)
           rotatedSunForceVector(:,i,j,k)=roty(wrapTo360(MeanMotion*180/pi*currentTime0))*solarpressureforcevector(:,i,j,k);
+          %maxSolarForce=roty(MeanMotion*180/pi*currentTime0)*[0 0 1]*-2.8*solarPressure*refSurf*;
+          %forceVectorOfMaster==roty(MeanMotion*180/pi*currentTime0)*[0 0 1]*1/2*-2.8*solarPressure*refSurf*;
         end
       end
      end

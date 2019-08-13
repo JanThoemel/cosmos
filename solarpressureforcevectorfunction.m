@@ -1,7 +1,11 @@
 function solarpressureforcevector = solarpressureforcevectorfunction(sunlight,panelSurface,noxpanels,noypanels,nozpanels,alphas,betas,gammas)
+  solarpressureforcevector=zeros(3,size(alphas,2),size(betas,2),size(gammas,2));
+  if norm(sunlight)==0
+    return
+  end  
   rotspeed=30;draw=0;
-  solarPressure=sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2);
-  sunlight     =sunlight/sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2);
+  solarPressure=norm(sunlight);
+  sunlight     =sunlight/solarPressure;
   fprintf('computing sunlightdynamics');  
   %% must be in dimensions of force, i.e. N
   axislength=1.1*solarPressure*panelSurface;
@@ -15,7 +19,6 @@ function solarpressureforcevector = solarpressureforcevectorfunction(sunlight,pa
   pz1  = [axislength*0.9,axislength*0.9,0];pz2 = [axislength*0.9,-axislength*0.9,0];pz3 = [-axislength*0.9,-axislength*0.9,0];pz4 = [-axislength*0.9,axislength*0.9,0];
   pz12 = 0.33*pz1; pz22 = 0.33*pz2; pz32 = 0.33*pz3; pz42 = 0.33*pz4;
   pz13 = 0.66*pz1; pz23 = 0.66*pz2; pz33 = 0.66*pz3; pz43 = 0.66*pz4;
-  solarpressureforcevector=zeros(3,size(alphas,2),size(betas,2),size(gammas,2));
   thetasun=zeros(size(gammas,2),size(betas,2),size(alphas,2));
   phisun=zeros(size(gammas,2),size(betas,2),size(alphas,2));
   sundragcoef=zeros(size(gammas,2),size(betas,2),size(alphas,2));

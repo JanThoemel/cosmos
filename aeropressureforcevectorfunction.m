@@ -1,7 +1,11 @@
 function aerototalforcevector = aeropressureforcevectorfunction(wind,panelSurface,noxpanels,noypanels,nozpanels,alphas,betas,gammas)
+  aerototalforcevector =zeros(3,size(alphas,2),size(betas,2),size(gammas,2));
+  if norm(wind)==0
+    return
+  end
   rotspeed=30;draw=0;
-  windPressure=sqrt(wind(1)^2+wind(2)^2+wind(3)^2);
-  wind        =wind/sqrt(wind(1)^2+wind(2)^2+wind(3)^2); 
+  windPressure=norm(wind);
+  wind        =wind/windPressure;
   %% %% the possible forcevectors
     fprintf('computing aerodynamics');  
     %% must be in dimensions of force, i.e. N
@@ -23,7 +27,6 @@ function aerototalforcevector = aeropressureforcevectorfunction(wind,panelSurfac
     aeroforcevectorz=[0 0 0]';
     aeroforcevectorx=[0 0 0]';
     aeroforcevectory=[0 0 0]';
-    aerototalforcevector =zeros(3,size(alphas,2),size(betas,2),size(gammas,2));
     for k=1:size(gammas,2) %% yaw
       for j=1:size(betas,2) %% pitch
         for i=1:size(alphas,2) %% roll
