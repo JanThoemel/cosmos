@@ -29,7 +29,7 @@ clear all;close all;clc;format shortEng;
 oldpath = path; path(oldpath,'..\matlabfunctions\')
 
 %% simulation time constants
-totalTime         =2*90*60;    %% approximate multiples of orbit periods,[s]
+totalTime         =30*90*60;    %% approximate multiples of orbit periods,[s]
 currentTime       =0;           %% now, should usually be 0
 time              =0;
 compStep          =9;          %% computational step size in s
@@ -51,13 +51,13 @@ sstDesiredFunction=@IRSRendezvousDesired;
 
 %% non-gravitational perturbations
 wind          =rho/2*v^2*[-1 0 0]';
-sunlight      =1*2*4.5e-6*[0 0 -1]';        %% at reference location, needs to be rotated later
+sunlight      =2*4.5e-6*[0 0 -1]';        %% at reference location, needs to be rotated later
 
 %refsurf=panelSurface*panels(1);
 refSurf=panelSurface*panels(3);
 
 %% forcevector determination and its angular granulaty
-deltaAngle        =30;                   %% roll,pitch,yaw angle resolution
+deltaAngle        =45;                   %% roll,pitch,yaw angle resolution
 alphas            =0:deltaAngle:360;     %% roll
 betas             =0:deltaAngle:180;     %% pitch 
 gammas            =0:deltaAngle:360;     %% yaw
@@ -66,8 +66,8 @@ aeropressureforcevector  =aeropressureforcevectorfunction(wind,panelSurface,pane
 solarpressureforcevector =solarpressureforcevectorfunction(sunlight,panelSurface,panels(1),panels(2),panels(3),alphas,betas,gammas);
 
 %% features
-stopUponTarget=0;               %% stop upon target conditions
-wakeAerodynamics=1;             %% use of wake aerodynamics
+stopUponTarget=1;               %% stop upon target conditions
+wakeAerodynamics=0;             %% use of wake aerodynamics
 activeMaster=1;                 %% if 0 then passive Master
 
 %% parameters for visualization
@@ -103,11 +103,6 @@ while currentTime<totalTime
       %% compute error
       etemp(:,i,j)=sstTemp(1:6,i,j)-sstDesiredtemp(1:6,i,j);
       flops=flops+6;
-      if isinf(norm(etemp(:,i,j)))
-        j
-        sstTemp(1:6,i,j)
-        sstTemp(1:6,i,j-1)
-      end
       %fprintf('\ne %e %e %e %e %e %e',etemp(1,i,j),etemp(2,i,j),etemp(3,i,j),etemp(4,i,j),etemp(5,i,j),etemp(6,i,j));
     end
     %% modify error vector with some averages according to Ivanov
@@ -117,9 +112,9 @@ while currentTime<totalTime
       [sstTemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),sstTemp(:,i,j),etemp(:,i,j),flops,sqrt(wind(1)^2+wind(2)^2+wind(3)^2),sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2),alphas,betas,gammas,aeropressureforcevector,solarpressureforcevector,sstTemp(7,i,j),sstTemp(8,i,j),sstTemp(9,i,j),refSurf,satelliteMass,wakeAerodynamics,activeMaster,currentTime+timetemp(j),radiusOfEarth,altitude,MeanMotion);
     end
     %% this is to interrupt when a condition, i.e. proximity is achieved, don't use if you start in proximity as for instance for formation flight 
-    %if stopUponTarget && abs(sstTemp(1,2,j))<15 && abs(sstTemp(2,2,j))<1 && abs(sstTemp(3,2,j))<10 && sqrt(sstTemp(4,2,j)^2+sstTemp(5,2,j)^2+sstTemp(6,2,j)^2)<0.01
-    %  break;
-    %end
+    if stopUponTarget && abs(sstTemp(1,2,j))<15 && abs(sstTemp(2,2,j))<1 && abs(sstTemp(3,2,j))<10 && sqrt(sstTemp(4,2,j)^2+sstTemp(5,2,j)^2+sstTemp(6,2,j)^2)<0.01
+      break;
+    end
   end %j
   sstTemp(:,:,1)=sstTemp(:,:,end);
  
@@ -137,9 +132,9 @@ while currentTime<totalTime
   currentTime=time(end);
   fprintf('simulated time %4.0f/%4.0f min (%3.0f%%)', currentTime/60, totalTime/60,currentTime/totalTime*100);
 
-  %if stopUponTarget && abs(sstTemp(1,2,j))<15 && abs(sstTemp(2,2,j))<1 && abs(sstTemp(3,2,j))<10 && sqrt(sstTemp(4,2,j)^2+sstTemp(5,2,j)^2+sstTemp(6,2,j)^2)<0.01
-  %  break;
-  %end
+  if stopUponTarget && abs(sstTemp(1,2,j))<15 && abs(sstTemp(2,2,j))<1 && abs(sstTemp(3,2,j))<10 && sqrt(sstTemp(4,2,j)^2+sstTemp(5,2,j)^2+sstTemp(6,2,j)^2)<0.01
+    break;
+  end
   %{
   for i=1:ns
     plot3(squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'-');hold on
@@ -225,10 +220,10 @@ function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satellite
   sstTemp=zeros(9,ns,size(timetemptemp,2));
   %% initial condition
   sstTemp(1,2,1)=-930.46;          %% x for rendezvous
-  sstTemp(2,2,1)=0;%55.27;          %% y for rendezvous
+  sstTemp(2,2,1)=55.27;          %% y for rendezvous
   sstTemp(3,2,1)=82.5;           %% z for rendezvous
   sstTemp(4,2,1)=-0.04;          %% u for rendezvous
-  sstTemp(5,2,1)=0;%0.29;          %% v for rendezvous
+  sstTemp(5,2,1)=0.29;          %% v for rendezvous
   sstTemp(6,2,1)=-0.17;          %% w for rendezvous
 end
 
@@ -306,12 +301,6 @@ function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,f
   %% compute control vector
   controlVector=-IR*B'*P*e;
   flops=flops+1+1+6*3; 
-
-  %solarPressure
-  %windPressure
-  %MeanMotion
-  %MeanMotion*currentTime0
-  %wrapTo360(MeanMotion*currentTime0)
   
   %% rotate sunforcevector if necessary
    if solarPressure>0 && wrapTo360(MeanMotion*180/pi*currentTime0)<acosd(radiusOfEarth/(radiusOfEarth+altitude)) && wrapTo360(MeanMotion*180/pi*currentTime0)<360-acosd(radiusOfEarth/(radiusOfEarth+altitude))
@@ -1044,11 +1033,19 @@ function plotting(angles,sst,time,ns,MeanMotion,u,e)
     end
     ylabel('w [m/s]');xlabel('no. of orbits');grid on;hold off
     
+  traub = csvread('TraubFig5.csv');
+  %csvwrite('zxyplane2.csv',squeeze(sst(1:3,2,:)))
+  % zxplane was computed with R=1e15
+  
+  xzplane=csvread('zxplane.csv');
+  xzyplane2=csvread('zxyplane2.csv');
+
     
     
   figure
     for i=1:ns
-      plot3(squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'-');hold on
+      plot3(squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),xzyplane2(1,:),xzyplane2(2,:),xzyplane2(3,:),'-');hold on
+      %plot3(squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'-');hold on
       names(i)=[{strcat('sat',int2str(i))}];
     end
     xlabel('X [m]');ylabel('Y [m]');zlabel('Z [m]');legend(names);grid on;hold off;axis equal;
@@ -1059,16 +1056,12 @@ function plotting(angles,sst,time,ns,MeanMotion,u,e)
       fprintf('2by2','-dpng','-r0')
     end
    
-  traub = csvread('TraubFig5.csv');
-  %csvwrite('zxyplane.csv',squeeze(sst(1:3,2,:)))
-  % zxplane was computed with R=1e15
-  
-  xzplane=csvread('zxplane.csv');
-  xzyplane=csvread('zxyplane.csv');
   figure
     %plot(traub(:,1),traub(:,2),xzplane(1,:),xzplane(3,:),xzyplane(1,:),xzyplane(3,:),squeeze(sst(1,i,:)),squeeze(sst(3,i,:)))
-    plot(traub(:,1),traub(:,2),xzplane(1,:),xzplane(3,:),squeeze(sst(1,i,:)),squeeze(sst(3,i,:)),xzyplane(1,:),xzyplane(3,:))
-    xlabel('X [m]','FontSize', 40);ylabel('Y [m]','FontSize', 40);legend('Traub et al. [4] ','this research in-plane only','this research in-plane, wake','this research in/out-of plane','FontSize', 40);grid on;axis equal;
+    %plot(traub(:,1),traub(:,2),xzplane(1,:),xzplane(3,:),squeeze(sst(1,i,:)),squeeze(sst(3,i,:)),xzyplane(1,:),xzyplane(3,:))
+    %xlabel('X [m]','FontSize', 40);ylabel('Y [m]','FontSize', 40);legend('Traub et al. [4] ','this research in-plane only','this research in-plane, wake','this research in/out-of plane','FontSize', 40);grid on;axis equal;
+    plot(traub(:,1),traub(:,2),squeeze(sst(1,i,:)),squeeze(sst(3,i,:)))
+    xlabel('X [m]','FontSize', 40);ylabel('Y [m]','FontSize', 40);legend('Traub et al. [4] ','this research in/out-of plane','FontSize', 40);grid on;axis equal;
     set(gca,'FontSize',40);set(gcf,'units','centimeters','position',[0,0,40,40]);axis([-1400 300 -400 600]);hold off;
 
 end
