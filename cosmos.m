@@ -49,7 +49,7 @@ sstInitialFunction=@IvanovFormationFlightInitial;
 
 %% non-gravitational perturbations
 wind          =rho/2*v^2*[-1 0 0]';
-sunlight      =0*2*4.5e-6*[0 0 -1]';        %% at reference location, needs to be rotated later
+sunlight      =1*2*4.5e-6*[0 0 -1]';        %% at reference location, needs to be rotated later
 
 %refsurf=panelSurface*panels(1);
 refSurf=panelSurface*panels(3);
@@ -66,7 +66,7 @@ solarpressureforcevector =solarpressureforcevectorfunction(sunlight,panelSurface
 %% features
 stopUponTarget=0;               %% stop upon target conditions, use only for rendezvous
 wakeAerodynamics=0;             %% use of wake aerodynamics
-activeMaster=1;                 %% if 0 then passive Master
+activeMaster=0;                 %% if 0 then passive Master
 
 %% parameters for visualization
 %! there are more parameters in the visualization function
@@ -292,22 +292,22 @@ end
 
 function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,flops,windPressure,solarPressure,alphas,betas,gammas,aeropressureforcevector,solarpressureforcevector,oldAlphaOpt,oldBetaOpt,oldGammaOpt,refSurf,satelliteMass,wakeAerodynamics,activeMaster,currentTime0,radiusOfEarth,altitude,MeanMotion)
 %hcwequation2 Hill-Clohessy-Wiltshire equation
-%! implement solarpressure for master
   usedTotalForceVector=zeros(3,size(alphas,2),size(betas,2),size(gammas,2));
   rotatedSunForceVector=zeros(3,size(alphas,2),size(betas,2),size(gammas,2));
 
   %% compute control vector
   controlVector=-IR*B'*P*e;
   flops=flops+size(IR,1)*(size(IR,1)-1)*size(IR,2)+0+0; 
-  
+  solarForceVectorOfMaster=[0 0 0 ]';
+  maxSolarForce=[0 0 0]';
   %% rotate sunforcevector if necessary
    if solarPressure>0 && wrapTo2Pi(MeanMotion*currentTime0)<acos(radiusOfEarth/(radiusOfEarth+altitude)) && wrapTo2Pi(MeanMotion*currentTime0)<360-acos(radiusOfEarth/(radiusOfEarth+altitude))
      for k=1:size(gammas,2)
       for j=1:size(betas,2)
         for i=1:size(alphas,2)
-          rotatedSunForceVector(:,i,j,k)=roty(wrapToPi(MeanMotion*currentTime0))*solarpressureforcevector(:,i,j,k);
-          %maxSolarForce=roty(MeanMotion*180/pi*currentTime0)*[0 0 1]*-2.8*solarPressure*refSurf*;
-          %forceVectorOfMaster==roty(MeanMotion*180/pi*currentTime0)*[0 0 1]*1/2*-2.8*solarPressure*refSurf*;
+          rotatedSunForceVector(:,i,j,k)=roty(wrapTo2Pi(MeanMotion*currentTime0))*solarpressureforcevector(:,i,j,k);
+          maxSolarForce=roty(wrapTo2Pi(MeanMotion*currentTime0))*[0 0 -1]'*2.8*solarPressure*refSurf;
+          solarForceVectorOfMaster=roty(wrapTo2Pi(MeanMotion*currentTime0))*[0 0 -1]'*1/2*2.8*solarPressure*refSurf;
         end
       end
      end
@@ -317,7 +317,7 @@ function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,f
   
   %% active master
   if activeMaster           
-    maxforceVectorOfMaster=-2.8*windPressure*refSurf*[1 0 0]';
+    maxforceVectorOfMaster=-2.8*windPressure*refSurf*[1 0 0]'-maxSolarForce';
     if wakeAerodynamics %% wake aerodynamics
       if abs(sst0(2))<1.5 && abs(sst0(3))< 1.5 %% is sat2 aligned with sat1?
         if sst0(1) <= 0 %% is sat2 before sat1?
@@ -330,18 +330,18 @@ function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,f
     for k=1:size(gammas,2)
       for j=1:size(betas,2)
         for i=1:size(alphas,2)
-          usedTotalForceVector(:,i,j,k)=2*aeropressureforcevector(:,i,j,k)-maxforceVectorOfMaster(:)+rotatedSunForceVector(:,i,j,k);
+          usedTotalForceVector(:,i,j,k)=2*aeropressureforcevector(:,i,j,k)+rotatedSunForceVector(:,i,j,k)-maxforceVectorOfMaster(:);
         end
       end
     end
     [forceVector,alphaOpt,betaOpt,gammaOpt]=findBestAerodynamicAngles(usedTotalForceVector,controlVector,alphas,betas,gammas,oldAlphaOpt,oldBetaOpt,oldGammaOpt);
   %% passive master; wake aerodynamics not implemented
   else                  
-    forceVectorOfMaster=-1/2*2.8*windPressure*refSurf*[1 0 0]';  
+    forceVectorOfMaster=-1/2*2.8*windPressure*refSurf*[1 0 0]'-solarForceVectorOfMaster;  
       for k=1:size(gammas,2)
         for j=1:size(betas,2)
           for i=1:size(alphas,2)
-            usedTotalForceVector(:,i,j,k)=aeropressureforcevector(:,i,j,k)-forceVectorOfMaster(:)+rotatedSunForceVector;
+            usedTotalForceVector(:,i,j,k)=aeropressureforcevector(:,i,j,k)+rotatedSunForceVector(:,i,j,k)-forceVectorOfMaster(:);
           end
         end
       end
@@ -1032,44 +1032,56 @@ function plotting(angles,sst,time,ns,MeanMotion,u,e)
     end
     ylabel('w [m/s]');xlabel('no. of orbits');grid on;hold off
     
-  %traub = csvread('TraubFig5.csv');
+  traub = csvread('TraubFig5.csv');
   %csvwrite('zxyplane.csv',squeeze(sst(1:3,2,:)))
   
-  %xzplane=csvread('zxplane.csv');
+  xzplane=csvread('zxplane.csv');
   xzyplane=csvread('zxyplane.csv');   
-  set(0, 'DefaultFigureRenderer', 'painters');
+  % set(0, 'DefaultFigureRenderer', 'painters');
 
-  figure
-    fontSize=20;
-    lineWidth=1;
-    for i=1:ns
-      plot3(squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'-','LineWidth',lineWidth);hold on
-      xlabel('X [m]','FontSize', fontSize);ylabel('Y [m]','FontSize', fontSize);zlabel('Z [m]','FontSize', fontSize);grid on;axis equal;
-      legend('this research','FontSize', fontSize);
-      %plot3(xzyplane(1,:),xzyplane(2,:),xzyplane(3,:),squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'-','LineWidth',lineWidth);hold on
-      %xlabel('X [m]','FontSize', fontSize);ylabel('Y [m]','FontSize', fontSize);zlabel('Z [m]','FontSize', fontSize);grid on;axis equal;
-      %legend('w/o solar pressure','w/ solar pressure','FontSize', fontSize);
-      set(gcf,'units','centimeters','position',[0,0,25,20]);
-      set(gca,'units','centimeters','position',[5.5 5.5 18 13]);
+  if 1 %% 3d printing
+    figure
+      fontSize=40;
+      lineWidth=1;
+      for i=2:ns
+        plot3(squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'-','LineWidth',lineWidth);hold on
+        %plot3(xzyplane(1,:),xzyplane(2,:),xzyplane(3,:),squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'LineWidth',lineWidth);hold on
+      end
+      %xlabel('X [m]','FontSize', fontSize);ylabel('Y [m]','FontSize', fontSize);zlabel('Z [m]','FontSize', fontSize);
+      %legend('this research','FontSize', fontSize);     
+      %xlabel('X [m]','FontSize', fontSize);ylabel('Y [m]','FontSize', fontSize);zlabel('Z [m]','FontSize', fontSize);
+      %legend('w/o solar pressure','w/ solar pressure','FontSize', fontSize,'units','centimeters','Position',[15 17 1 1]);
+      grid on;axis equal;
+      set(gcf,'units','centimeters','position',[0,0,27,20]);
+      set(gca,'units','centimeters','position',[5.5 4 16 15]);
       set(gca,'FontSize',fontSize);
       %axis([-2300 150 -320 320 -320 320]);
-    end
-    hold off;
-    %savefig('sst3d.fig');
-    %print('-painters','sst3d.emf','-dmeta')
-    
-    if 0
-      axis(sc*[-35e3 35e3 -35e3 35e3 -35e3 35e3])
-      xticks(sc*[-20e3 0 20e3]);yticks(sc*[-20e3 0 20e3]);zticks(sc*[-20e3 0 20e3]);
-      set(gcf,'PaperUnits', 'inches','PaperPosition', [0 0 2 2]) ;
-      fprintf('2by2','-dpng','-r0')
-    end
-  
-    if 0
+      %xticks([-2000 -1000 0 ]);yticks([-200 200]);zticks([-200 200]);
+      %view([1 -0.5 0.5]);
+      %set(gcf, 'InvertHardCopy', 'off');
+      hold off;
+
+      %savefig('sst3d.fig');
+      %print('-painters','-dpdf','sst3d.pdf')
+      print('-painters','-dmeta','sst3d.emf')
+
+  end
+    if 0 %% 2d printing
       figure
         plot(traub(:,1),traub(:,2),xzplane(1,:),xzplane(3,:),squeeze(sst(1,i,:)),squeeze(sst(3,i,:)))
-        xlabel('X [m]','FontSize', 40);ylabel('Y [m]','FontSize', 40);legend('Traub et al. [4] ','this research in-plane','this research in/out-of-plane','FontSize', 40);grid on;axis equal;
-        set(gca,'FontSize',40);set(gcf,'units','centimeters','position',[0,0,25,20]);axis([-1400 100 -400 600]);hold off;
+        xlabel('X [m]','FontSize', fontSize);ylabel('Y [m]','FontSize', fontSize);
+        grid on;axis equal;hold off;
+        axis([-1400 100 -400 600]);
+        box off;
+        legend('Traub et al. [4] ','this research in-plane','this research in/out-of-plane','FontSize', fontSize,'Units','centimeters','Position',[16 16 1 1]);
+        
+        %set(gca,'FontSize',40);
+        %set(gcf,'units','centimeters','position',[0,0,25,20])
+        %legend('w/o solar pressure','w/ solar pressure','FontSize', fontSize,'Units','centimeters','Position',[12 17 1 1]);
+        set(gcf,'units','centimeters','position',[0,0,27,20]);
+        set(gca,'units','centimeters','position',[5.5 3 20 15]);
+        set(gca,'FontSize',fontSize);
+        print('-painters','-dmeta','sst2d.emf')
     end
 end
 
