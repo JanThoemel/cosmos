@@ -1,10 +1,10 @@
 %% the Science of the Operations of Mini Satellite fOrmations and Constellations
 %% COSMOS V0.1
-
+%%
 %% based on: 
 %% Deployment and Maintenance of Nanosatellite Tetrahedral Formation Flying Using Aerodynamic Forces
 %% 69th International Astronautical Congress (IAC), Bremen, Germany, 1-5 October 2018.
-
+%%
 %% Revision history:
 %% 10/06/2019:  aerocoeff corrected, Ivanov and Traub work
 %% 06/08/2019:  Ivanov's formation flight seems to work only for a downscaled formation size
@@ -14,7 +14,7 @@
 %% 09/05/2019:  aerodynamics in local-x direction,i.e. pitch implemented, correctness to be checked
 %%
 %% todo:
-%% investigate accuracy and stability wrt deltaA, timestep, controlloop duration etc
+%% investigate accuracy and stability wrt deltaA, timestep, controlloop duration, other ODE solvers,meritfactors etc
 %% implement J2
 %% drag of master
 %% no drag in wake
@@ -22,14 +22,12 @@
 %% eliptical orbits
 %% compute moment coefficients and moments
 
-%% meritfactors, computational steps size, control length and others impact stability of control
-
 %% Matlab parameters
-clear all;close all;clc;format shortEng;
+clear all; close all;clc;format shortEng;
 oldpath = path; path(oldpath,'..\matlabfunctions\')
 
 %% simulation time constants
-totalTime         =30*90*60;    %% approximate multiples of orbit periods,[s]
+totalTime         =5*90*60;    %% approximate multiples of orbit periods,[s]
 currentTime       =0;           %% now, should usually be 0
 time              =0;
 compStep          =9;          %% computational step size in s
@@ -38,10 +36,10 @@ timetemp  =0:compStep:lengthControlLoop; %% duration and interpolation timestep 
 %fprintf('\nnumber of float variables for each control loop: %d, size %f kbyte',size(timetemp,2)*(1+6+6+3)+6+1,(size(timetemp,2)*(1+6+6+3)+6+1)*4/1024); %% size of time vector, state vector, desired state vector and anglevector, C and MeanMotion of analytical solution
 
 %% symbolic names of initial conditions and desired statevector functions
-sstInitialFunction=@IRSRendezvousInitial;
-sstDesiredFunction=@IRSRendezvousDesired;
-%sstDesiredFunction=@IvanovFormationFlightDesired;
-%sstInitialFunction=@IvanovFormationFlightInitial;
+%sstInitialFunction=@IRSRendezvousInitial;
+%sstDesiredFunction=@IRSRendezvousDesired;
+sstDesiredFunction=@IvanovFormationFlightDesired;
+sstInitialFunction=@IvanovFormationFlightInitial;
 
 %% actual initial conditions of ODE
 [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satelliteMass,panelSurface]=sstInitialFunction(currentTime+timetemp); 
@@ -51,7 +49,7 @@ sstDesiredFunction=@IRSRendezvousDesired;
 
 %% non-gravitational perturbations
 wind          =rho/2*v^2*[-1 0 0]';
-sunlight      =2*4.5e-6*[0 0 -1]';        %% at reference location, needs to be rotated later
+sunlight      =0*2*4.5e-6*[0 0 -1]';        %% at reference location, needs to be rotated later
 
 %refsurf=panelSurface*panels(1);
 refSurf=panelSurface*panels(3);
@@ -66,7 +64,7 @@ aeropressureforcevector  =aeropressureforcevectorfunction(wind,panelSurface,pane
 solarpressureforcevector =solarpressureforcevectorfunction(sunlight,panelSurface,panels(1),panels(2),panels(3),alphas,betas,gammas);
 
 %% features
-stopUponTarget=1;               %% stop upon target conditions
+stopUponTarget=0;               %% stop upon target conditions, use only for rendezvous
 wakeAerodynamics=0;             %% use of wake aerodynamics
 activeMaster=1;                 %% if 0 then passive Master
 
@@ -95,7 +93,8 @@ flops=0;
 %figure
 while currentTime<totalTime
   %% Desired state vector
-  [sstDesiredtemp]=sstDesiredFunction(currentTime+timetemp,ns,MeanMotion); 
+  [sstDesiredtemp]=sstDesiredFunction(currentTime+timetemp,ns,MeanMotion);
+  flops=flops+0;
   %% apply disturbances
  
   for j=1:size(timetemp,2)-1    %% for each control loop within ODE solver loop
@@ -209,8 +208,8 @@ function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satellite
   argumentOfPerigeeAtTe0=0;     %% not used yet
   trueAnomalyAtTe0=0;           %% not used yet
   %% other constants
-  [~,~,radiusOfEarth,~,~]=orbitalproperties(500000);
-  altitude=6778137-radiusOfEarth;
+  [~,~,radiusOfEarth,~,~]=orbitalproperties(500000); %% fake value is passed to get the physics value only
+  altitude=450000%6778137-radiusOfEarth;
   [rho,v,radiusOfEarth,mu,MeanMotion]=orbitalproperties(altitude);
   
   %% satelliteshapeproperties, number of 10cmx10cm faces to x,y,z(body coordinates, normally aligned with):
@@ -239,7 +238,7 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satelliteMass,panelSurface]=IvanovFormationFlightInitial(timetemptemp)
-%% initial conditions
+%% initial conditions for Ivanov
   ns=5;
   satelliteMass=1;
   altitude=340000;                %% in m
@@ -264,12 +263,11 @@ function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satellite
   end
 end
 function [sstDesired]=IvanovFormationFlightDesired(timetemptemp,ns,MeanMotion)
-%% desired solution
+%% desired solution for Ivanov
   sstDesired=zeros(9,ns,size(timetemptemp,2));
   %% analytical solution according to Ivanov
   AAA=100;    DDD=115;
-  %AAA=10;    DDD=11.5;
-
+  %MeanMotion=MeanMotion/180*pi;
   sstDesired(1,1+1,:)=-DDD;
   sstDesired(1,2+1,:)=DDD;
 
@@ -300,14 +298,14 @@ function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,f
 
   %% compute control vector
   controlVector=-IR*B'*P*e;
-  flops=flops+1+1+6*3; 
+  flops=flops+size(IR,1)*(size(IR,1)-1)*size(IR,2)+0+0; 
   
   %% rotate sunforcevector if necessary
-   if solarPressure>0 && wrapTo360(MeanMotion*180/pi*currentTime0)<acosd(radiusOfEarth/(radiusOfEarth+altitude)) && wrapTo360(MeanMotion*180/pi*currentTime0)<360-acosd(radiusOfEarth/(radiusOfEarth+altitude))
+   if solarPressure>0 && wrapTo2Pi(MeanMotion*currentTime0)<acos(radiusOfEarth/(radiusOfEarth+altitude)) && wrapTo2Pi(MeanMotion*currentTime0)<360-acos(radiusOfEarth/(radiusOfEarth+altitude))
      for k=1:size(gammas,2)
       for j=1:size(betas,2)
         for i=1:size(alphas,2)
-          rotatedSunForceVector(:,i,j,k)=roty(wrapTo360(MeanMotion*180/pi*currentTime0))*solarpressureforcevector(:,i,j,k);
+          rotatedSunForceVector(:,i,j,k)=roty(wrapToPi(MeanMotion*currentTime0))*solarpressureforcevector(:,i,j,k);
           %maxSolarForce=roty(MeanMotion*180/pi*currentTime0)*[0 0 1]*-2.8*solarPressure*refSurf*;
           %forceVectorOfMaster==roty(MeanMotion*180/pi*currentTime0)*[0 0 1]*1/2*-2.8*solarPressure*refSurf*;
         end
@@ -935,7 +933,7 @@ function [P,IR,A,B]=riccatiequation(MeanMotion)
   %R=diag([1e10 1e10 1e10]);    %% 550, -2900
   %R=diag([1e11 1e11 1e11]);    %% 550, -2900
   %R=diag([1e12 1e12 1e12]);    %% This is an R of Traub %550, -2900 
-  %R=diag([1e13 1e14 1e14]);    %% this is my R assuming Ivanov made a sign error (reported IR instead of R)
+  %R=diag([1e13 1e14 1e14]);    %% this is my R assuming Ivanov made a sign error (reported IR/R^-1 instead of R)
   %R=diag([1e13 1e13 1e13]);     %% 550, -2900 
   %R=diag([1e14 1e14 1e14]);    %% 550, -2900
   R=diag([1e15 1e15 1e15]);    %% 550, -2900
@@ -963,13 +961,13 @@ end
 
 function plotting(angles,sst,time,ns,MeanMotion,u,e)
 
-  figure
+  figure %% error
     for j=1:ns
       for i=1:6
         plot(time,squeeze(e(i,j,:)));hold on;
       end
     end
-    legend;title('error')
+    legend;title('error');hold off;
 
   figure
    subplot(4,3,1)%% roll
@@ -1017,8 +1015,7 @@ function plotting(angles,sst,time,ns,MeanMotion,u,e)
     for i=1:ns
        plot(squeeze(time/2/pi*MeanMotion),squeeze(u(3,i,:)));hold on
     end
-    ylabel('u3');xlabel('no. of orbits');grid on;hold off
-    
+    ylabel('u3');xlabel('no. of orbits');grid on;hold off  
     subplot(4,3,10)%%u
     for i=1:ns
        plot(squeeze(time/2/pi*MeanMotion),squeeze(sst(4,i,:)));hold on
@@ -1035,37 +1032,45 @@ function plotting(angles,sst,time,ns,MeanMotion,u,e)
     end
     ylabel('w [m/s]');xlabel('no. of orbits');grid on;hold off
     
-  traub = csvread('TraubFig5.csv');
-  %csvwrite('zxyplane2.csv',squeeze(sst(1:3,2,:)))
-  % zxplane was computed with R=1e15
+  %traub = csvread('TraubFig5.csv');
+  %csvwrite('zxyplane.csv',squeeze(sst(1:3,2,:)))
   
-  xzplane=csvread('zxplane.csv');
-  xzyplane2=csvread('zxyplane2.csv');
+  %xzplane=csvread('zxplane.csv');
+  xzyplane=csvread('zxyplane.csv');   
+  set(0, 'DefaultFigureRenderer', 'painters');
 
-    
-    
   figure
+    fontSize=20;
+    lineWidth=1;
     for i=1:ns
-      plot3(squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),xzyplane2(1,:),xzyplane2(2,:),xzyplane2(3,:),'-');hold on
-      %plot3(squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'-');hold on
-      names(i)=[{strcat('sat',int2str(i))}];
+      plot3(squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'-','LineWidth',lineWidth);hold on
+      xlabel('X [m]','FontSize', fontSize);ylabel('Y [m]','FontSize', fontSize);zlabel('Z [m]','FontSize', fontSize);grid on;axis equal;
+      legend('this research','FontSize', fontSize);
+      %plot3(xzyplane(1,:),xzyplane(2,:),xzyplane(3,:),squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'-','LineWidth',lineWidth);hold on
+      %xlabel('X [m]','FontSize', fontSize);ylabel('Y [m]','FontSize', fontSize);zlabel('Z [m]','FontSize', fontSize);grid on;axis equal;
+      %legend('w/o solar pressure','w/ solar pressure','FontSize', fontSize);
+      set(gcf,'units','centimeters','position',[0,0,25,20]);
+      set(gca,'units','centimeters','position',[5.5 5.5 18 13]);
+      set(gca,'FontSize',fontSize);
+      %axis([-2300 150 -320 320 -320 320]);
     end
-    xlabel('X [m]');ylabel('Y [m]');zlabel('Z [m]');legend(names);grid on;hold off;axis equal;
+    hold off;
+    %savefig('sst3d.fig');
+    %print('-painters','sst3d.emf','-dmeta')
+    
     if 0
       axis(sc*[-35e3 35e3 -35e3 35e3 -35e3 35e3])
       xticks(sc*[-20e3 0 20e3]);yticks(sc*[-20e3 0 20e3]);zticks(sc*[-20e3 0 20e3]);
       set(gcf,'PaperUnits', 'inches','PaperPosition', [0 0 2 2]) ;
       fprintf('2by2','-dpng','-r0')
     end
-   
-  figure
-    %plot(traub(:,1),traub(:,2),xzplane(1,:),xzplane(3,:),xzyplane(1,:),xzyplane(3,:),squeeze(sst(1,i,:)),squeeze(sst(3,i,:)))
-    %plot(traub(:,1),traub(:,2),xzplane(1,:),xzplane(3,:),squeeze(sst(1,i,:)),squeeze(sst(3,i,:)),xzyplane(1,:),xzyplane(3,:))
-    %xlabel('X [m]','FontSize', 40);ylabel('Y [m]','FontSize', 40);legend('Traub et al. [4] ','this research in-plane only','this research in-plane, wake','this research in/out-of plane','FontSize', 40);grid on;axis equal;
-    plot(traub(:,1),traub(:,2),squeeze(sst(1,i,:)),squeeze(sst(3,i,:)))
-    xlabel('X [m]','FontSize', 40);ylabel('Y [m]','FontSize', 40);legend('Traub et al. [4] ','this research in/out-of plane','FontSize', 40);grid on;axis equal;
-    set(gca,'FontSize',40);set(gcf,'units','centimeters','position',[0,0,40,40]);axis([-1400 300 -400 600]);hold off;
-
+  
+    if 0
+      figure
+        plot(traub(:,1),traub(:,2),xzplane(1,:),xzplane(3,:),squeeze(sst(1,i,:)),squeeze(sst(3,i,:)))
+        xlabel('X [m]','FontSize', 40);ylabel('Y [m]','FontSize', 40);legend('Traub et al. [4] ','this research in-plane','this research in/out-of-plane','FontSize', 40);grid on;axis equal;
+        set(gca,'FontSize',40);set(gcf,'units','centimeters','position',[0,0,25,20]);axis([-1400 100 -400 600]);hold off;
+    end
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
