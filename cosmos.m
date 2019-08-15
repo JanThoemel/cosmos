@@ -27,7 +27,7 @@ clear all; close all;clc;format shortEng;
 oldpath = path; path(oldpath,'..\matlabfunctions\')
 
 %% simulation time constants
-totalTime         =5*90*60;    %% approximate multiples of orbit periods,[s]
+totalTime         =25*90*60;    %% approximate multiples of orbit periods,[s]
 currentTime       =0;           %% now, should usually be 0
 time              =0;
 compStep          =9;          %% computational step size in s
@@ -98,16 +98,23 @@ while currentTime<totalTime
   %% apply disturbances
  
   for j=1:size(timetemp,2)-1    %% for each control loop within ODE solver loop
-    for i=2:ns
-      %% compute error
-      etemp(:,i,j)=sstTemp(1:6,i,j)-sstDesiredtemp(1:6,i,j);
+    Average=zeros(6,ns);%[0 0 0 0 0 0]';
+    for i=1:ns
+      %% compute average error
+      flops=flops+6;
+      Average(:,i)=Average(:,i)+(sstTemp(1:6,i,j)-sstDesiredtemp(1:6,i,j))/ns;
+      %fprintf('\ne %e %e %e %e %e %e',etemp(1,i,j),etemp(2,i,j),etemp(3,i,j),etemp(4,i,j),etemp(5,i,j),etemp(6,i,j));
+    end
+    %% assign average error
+    for i=1:ns
+      etemp(:,i,j)=Average(:,i);
       flops=flops+6;
       %fprintf('\ne %e %e %e %e %e %e',etemp(1,i,j),etemp(2,i,j),etemp(3,i,j),etemp(4,i,j),etemp(5,i,j),etemp(6,i,j));
     end
     %% modify error vector with some averages according to Ivanov
     %x(:,1,j+1)=[0 0 0 0 0 0]';
     %utemp(:,1,j+1)=[-1.2 0 0]';
-    for i=2:ns %% for each satellite but not the master satellite
+    for i=1:ns %% for each satellite but not the master satellite
       [sstTemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),sstTemp(:,i,j),etemp(:,i,j),flops,sqrt(wind(1)^2+wind(2)^2+wind(3)^2),sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2),alphas,betas,gammas,aeropressureforcevector,solarpressureforcevector,sstTemp(7,i,j),sstTemp(8,i,j),sstTemp(9,i,j),refSurf,satelliteMass,wakeAerodynamics,activeMaster,currentTime+timetemp(j),radiusOfEarth,altitude,MeanMotion);
     end
     %% this is to interrupt when a condition, i.e. proximity is achieved, don't use if you start in proximity as for instance for formation flight 
@@ -239,7 +246,7 @@ end
 
 function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satelliteMass,panelSurface]=IvanovFormationFlightInitial(timetemptemp)
 %% initial conditions for Ivanov
-  ns=5;
+  ns=4;
   satelliteMass=1;
   altitude=340000;                %% in m
   argumentOfPerigeeAtTe0=0;       %% not used yet
@@ -268,22 +275,23 @@ function [sstDesired]=IvanovFormationFlightDesired(timetemptemp,ns,MeanMotion)
   %% analytical solution according to Ivanov
   AAA=100;    DDD=115;
   %MeanMotion=MeanMotion/180*pi;
-  sstDesired(1,1+1,:)=-DDD;
-  sstDesired(1,2+1,:)=DDD;
+  master=0;
+  sstDesired(1,1+master,:)=-DDD;
+  sstDesired(1,2+master,:)=DDD;
 
-  sstDesired(1,3+1,:)=2*AAA*        cos(MeanMotion*(timetemptemp)-acos(1/3));  
-  sstDesired(1,4+1,:)=2*AAA*        cos(MeanMotion*(timetemptemp));
-  sstDesired(2,3+1,:)=  AAA*sqrt(3)*sin(MeanMotion*(timetemptemp));
-  sstDesired(2,4+1,:)=  AAA*sqrt(3)*sin(MeanMotion*(timetemptemp)+acos(1/3));
-  sstDesired(3,3+1,:)=  AAA*        sin(MeanMotion*(timetemptemp)-acos(1/3));
-  sstDesired(3,4+1,:)=  AAA*        sin(MeanMotion*(timetemptemp));
+  sstDesired(1,3+master,:)=2*AAA*        cos(MeanMotion*(timetemptemp)-acos(1/3));  
+  sstDesired(1,4+master,:)=2*AAA*        cos(MeanMotion*(timetemptemp));
+  sstDesired(2,3+master,:)=  AAA*sqrt(3)*sin(MeanMotion*(timetemptemp));
+  sstDesired(2,4+master,:)=  AAA*sqrt(3)*sin(MeanMotion*(timetemptemp)+acos(1/3));
+  sstDesired(3,3+master,:)=  AAA*        sin(MeanMotion*(timetemptemp)-acos(1/3));
+  sstDesired(3,4+master,:)=  AAA*        sin(MeanMotion*(timetemptemp));
   
-  sstDesired(4,3+1,:)=2*AAA*       -sin(MeanMotion*(timetemptemp)-acos(1/3))*MeanMotion;  
-  sstDesired(4,4+1,:)=2*AAA*       -sin(MeanMotion*(timetemptemp))*MeanMotion;
-  sstDesired(5,3+1,:)=  AAA*sqrt(3)*cos(MeanMotion*(timetemptemp))*MeanMotion;
-  sstDesired(5,4+1,:)=  AAA*sqrt(3)*cos(MeanMotion*(timetemptemp)+acos(1/3))*MeanMotion;
-  sstDesired(6,3+1,:)=  AAA*        cos(MeanMotion*(timetemptemp)-acos(1/3))*MeanMotion;
-  sstDesired(6,4+1,:)=  AAA*        cos(MeanMotion*(timetemptemp))*MeanMotion;
+  sstDesired(4,3+master,:)=2*AAA*       -sin(MeanMotion*(timetemptemp)-acos(1/3))*MeanMotion;  
+  sstDesired(4,4+master,:)=2*AAA*       -sin(MeanMotion*(timetemptemp))*MeanMotion;
+  sstDesired(5,3+master,:)=  AAA*sqrt(3)*cos(MeanMotion*(timetemptemp))*MeanMotion;
+  sstDesired(5,4+master,:)=  AAA*sqrt(3)*cos(MeanMotion*(timetemptemp)+acos(1/3))*MeanMotion;
+  sstDesired(6,3+master,:)=  AAA*        cos(MeanMotion*(timetemptemp)-acos(1/3))*MeanMotion;
+  sstDesired(6,4+master,:)=  AAA*        cos(MeanMotion*(timetemptemp))*MeanMotion;
 
 end
 
@@ -1043,7 +1051,7 @@ function plotting(angles,sst,time,ns,MeanMotion,u,e)
     figure
       fontSize=40;
       lineWidth=1;
-      for i=2:ns
+      for i=1:ns
         plot3(squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'-','LineWidth',lineWidth);hold on
         %plot3(xzyplane(1,:),xzyplane(2,:),xzyplane(3,:),squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'LineWidth',lineWidth);hold on
       end
