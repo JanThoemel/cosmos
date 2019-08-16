@@ -27,7 +27,7 @@ clear all; close all;clc;format shortEng;
 oldpath = path; path(oldpath,'..\matlabfunctions\')
 
 %% simulation time constants
-totalTime         =25*90*60;    %% approximate multiples of orbit periods,[s]
+totalTime         =15*90*60;    %% approximate multiples of orbit periods,[s]
 currentTime       =0;           %% now, should usually be 0
 time              =0;
 compStep          =9;          %% computational step size in s
@@ -42,7 +42,8 @@ sstDesiredFunction=@IvanovFormationFlightDesired;
 sstInitialFunction=@IvanovFormationFlightInitial;
 
 %% actual initial conditions of ODE
-[sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satelliteMass,panelSurface]=sstInitialFunction(currentTime+timetemp); 
+[sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satelliteMass,panelSurface]=...
+                                                    sstInitialFunction(currentTime+timetemp); 
 
 %% settings for control algorithm
 [P,IR,A,B]=riccatiequation(MeanMotion);
@@ -60,13 +61,18 @@ alphas            =0:deltaAngle:360;     %% roll
 betas             =0:deltaAngle:180;     %% pitch 
 gammas            =0:deltaAngle:360;     %% yaw
 
-aeropressureforcevector  =aeropressureforcevectorfunction(wind,panelSurface,panels(1),panels(2),panels(3),alphas,betas,gammas);
-solarpressureforcevector =solarpressureforcevectorfunction(sunlight,panelSurface,panels(1),panels(2),panels(3),alphas,betas,gammas);
+aeropressureforcevector  =aeropressureforcevectorfunction(wind,panelSurface,panels(1),panels(2),...
+                                                                    panels(3),alphas,betas,gammas);
+solarpressureforcevector =solarpressureforcevectorfunction(sunlight,panelSurface,panels(1),...
+                                                          panels(2),panels(3),alphas,betas,gammas);
 
 %% features
 stopUponTarget=0;               %% stop upon target conditions, use only for rendezvous
+targetBox(1)=15;targetBox(2)=1;targetBox(3)=10;targetBox(4)=0.01;
+stopUponRunAway=0;               %% stop upon target leaving proximity of desired trajectory box
+runAwayBox(1)=1000;runAwayBox(2)=1000;runAwayBox(3)=1000;runAwayBox(4)=1000;
 wakeAerodynamics=0;             %% use of wake aerodynamics
-activeMaster=0;                 %% if 0 then passive Master
+masterSatellite=0;                 %% if 0 then passive Master
 
 %% parameters for visualization
 %! there are more parameters in the visualization function
@@ -75,7 +81,8 @@ VIS_SCALE         =100;         %% scales deployment, formation size
 VIS_ACC_FACTOR    =120;         %% speeds up the Google Earth visualization
 VIS_STEP          =60;          %% visualization step size in s
 VIS_MODELFILENAME =strcat('figures',filesep,'cocu.dae');
-fprintf('duration of movie without upper stage flight: %2.1f min\n',totalTime/VIS_ACC_FACTOR/60) %% length of animation in min: totaltime/vis_step/accelerationfactor/60
+%% length of animation in min: totaltime/vis_step/accelerationfactor/60
+fprintf('duration of movie without upper stage flight: %2.1f min\n',totalTime/VIS_ACC_FACTOR/60) 
 
 %% some initializations
 u             =zeros(3,ns);     %% control vector
@@ -91,6 +98,7 @@ sst(:,:,1)    =sstTemp(:,:,1);
 %% solving the ODE in chunks per each control period
 flops=0;
 %figure
+firstTime=0;
 while currentTime<totalTime
   %% Desired state vector
   [sstDesiredtemp]=sstDesiredFunction(currentTime+timetemp,ns,MeanMotion);
@@ -98,27 +106,48 @@ while currentTime<totalTime
   %% apply disturbances
  
   for j=1:size(timetemp,2)-1    %% for each control loop within ODE solver loop
-    Average=zeros(6,ns);%[0 0 0 0 0 0]';
+    average=zeros(6,1);%[0 0 0 0 0 0]';
     for i=1:ns
-      %% compute average error
-      flops=flops+6;
-      Average(:,i)=Average(:,i)+(sstTemp(1:6,i,j)-sstDesiredtemp(1:6,i,j))/ns;
-      %fprintf('\ne %e %e %e %e %e %e',etemp(1,i,j),etemp(2,i,j),etemp(3,i,j),etemp(4,i,j),etemp(5,i,j),etemp(6,i,j));
-    end
-    %% assign average error
-    for i=1:ns
-      etemp(:,i,j)=Average(:,i);
+      %% compute error and average error
+      etemp(:,i,j)=sstTemp(1:6,i,j)-sstDesiredtemp(1:6,i,j);
+      average(:)=average(:)+etemp(:,i,j)/ns;
       flops=flops+6;
       %fprintf('\ne %e %e %e %e %e %e',etemp(1,i,j),etemp(2,i,j),etemp(3,i,j),etemp(4,i,j),etemp(5,i,j),etemp(6,i,j));
     end
+    
+    for i=1:ns
+      %% assign average error
+      etemp(:,i,j)=etemp(:,i,j)-average(:);
+      sstTemp(1:6,i,j)=sstTemp(1:6,i,j)-average(:);
+      flops=flops+6;
+      %fprintf('\ne %e %e %e %e %e %e',etemp(1,i,j),etemp(2,i,j),etemp(3,i,j),etemp(4,i,j),etemp(5,i,j),etemp(6,i,j));
+    end
+    if firstTime==0;
+      %% set sst for initial step right because only further steps are computed
+      sst(:,:,1)    =sstTemp(:,:,1);
+      firstTime=1;
+    end
+    
     %% modify error vector with some averages according to Ivanov
     %x(:,1,j+1)=[0 0 0 0 0 0]';
     %utemp(:,1,j+1)=[-1.2 0 0]';
     for i=1:ns %% for each satellite but not the master satellite
-      [sstTemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),sstTemp(:,i,j),etemp(:,i,j),flops,sqrt(wind(1)^2+wind(2)^2+wind(3)^2),sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2),alphas,betas,gammas,aeropressureforcevector,solarpressureforcevector,sstTemp(7,i,j),sstTemp(8,i,j),sstTemp(9,i,j),refSurf,satelliteMass,wakeAerodynamics,activeMaster,currentTime+timetemp(j),radiusOfEarth,altitude,MeanMotion);
+      [sstTemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),...
+      sstTemp(:,i,j),etemp(:,i,j),flops,sqrt(wind(1)^2+wind(2)^2+wind(3)^2),sqrt(sunlight(1)^2+...
+      sunlight(2)^2+sunlight(3)^2),alphas,betas,gammas,aeropressureforcevector,...
+      solarpressureforcevector,sstTemp(7,i,j),sstTemp(8,i,j),sstTemp(9,i,j),refSurf,satelliteMass,...
+      wakeAerodynamics,masterSatellite,currentTime+timetemp(j),radiusOfEarth,altitude,MeanMotion);
     end
-    %% this is to interrupt when a condition, i.e. proximity is achieved, don't use if you start in proximity as for instance for formation flight 
-    if stopUponTarget && abs(sstTemp(1,2,j))<15 && abs(sstTemp(2,2,j))<1 && abs(sstTemp(3,2,j))<10 && sqrt(sstTemp(4,2,j)^2+sstTemp(5,2,j)^2+sstTemp(6,2,j)^2)<0.01
+    
+    %% this is to interrupt when a condition, i.e. proximity is achieved, don't use if you start in
+    %% proximity as for instance for formation flight 
+    if stopUponTarget && abs(sstTemp(1,2,j))<targetBox(1) && abs(sstTemp(2,2,j))<targetBox(2) &&...
+       abs(sstTemp(3,2,j))<targetBox(3) && sqrt(sstTemp(4,2,j)^2+sstTemp(5,2,j)^2+...
+       sstTemp(6,2,j)^2)<targetBox(4)
+      break;
+    elseif stopUponRunAway && abs(sstTemp(1,2,j))>runAwayBox(1) && abs(sstTemp(2,2,j))>runAwayBox(2)...
+           && abs(sstTemp(3,2,j))>runAwayBox(3) && sqrt(sstTemp(4,2,j)^2+sstTemp(5,2,j)^2+...
+           sstTemp(6,2,j)^2)>runAwayBox(4)
       break;
     end
   end %j
@@ -138,8 +167,12 @@ while currentTime<totalTime
   currentTime=time(end);
   fprintf('simulated time %4.0f/%4.0f min (%3.0f%%)', currentTime/60, totalTime/60,currentTime/totalTime*100);
 
-  if stopUponTarget && abs(sstTemp(1,2,j))<15 && abs(sstTemp(2,2,j))<1 && abs(sstTemp(3,2,j))<10 && sqrt(sstTemp(4,2,j)^2+sstTemp(5,2,j)^2+sstTemp(6,2,j)^2)<0.01
+  if stopUponTarget && abs(sstTemp(1,2,j))<targetBox(1) && abs(sstTemp(2,2,j))<targetBox(2) &&...
+     abs(sstTemp(3,2,j))<targetBox(3) && sqrt(sstTemp(4,2,j)^2+sstTemp(5,2,j)^2+sstTemp(6,2,j)^2)<targetBox(4)
     break;
+  elseif stopUponRunAway && abs(sstTemp(1,2,j))>runAwayBox(1) && abs(sstTemp(2,2,j))>runAwayBox(2)...
+         && abs(sstTemp(3,2,j))>runAwayBox(3) && sqrt(sstTemp(4,2,j)^2+sstTemp(5,2,j)^2+sstTemp(6,2,j)^2)>runAwayBox(4)
+      break;
   end
   %{
   for i=1:ns
@@ -298,7 +331,10 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,flops,windPressure,solarPressure,alphas,betas,gammas,aeropressureforcevector,solarpressureforcevector,oldAlphaOpt,oldBetaOpt,oldGammaOpt,refSurf,satelliteMass,wakeAerodynamics,activeMaster,currentTime0,radiusOfEarth,altitude,MeanMotion)
+function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,flops,windPressure,...
+          solarPressure,alphas,betas,gammas,aeropressureforcevector,solarpressureforcevector,...
+          oldAlphaOpt,oldBetaOpt,oldGammaOpt,refSurf,satelliteMass,wakeAerodynamics,masterSatellite...
+          ,currentTime0,radiusOfEarth,altitude,MeanMotion)
 %hcwequation2 Hill-Clohessy-Wiltshire equation
   usedTotalForceVector=zeros(3,size(alphas,2),size(betas,2),size(gammas,2));
   rotatedSunForceVector=zeros(3,size(alphas,2),size(betas,2),size(gammas,2));
@@ -308,24 +344,33 @@ function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,f
   flops=flops+size(IR,1)*(size(IR,1)-1)*size(IR,2)+0+0; 
   solarForceVectorOfMaster=[0 0 0 ]';
   maxSolarForce=[0 0 0]';
+  
   %% rotate sunforcevector if necessary
-   if solarPressure>0 && wrapTo2Pi(MeanMotion*currentTime0)<acos(radiusOfEarth/(radiusOfEarth+altitude)) && wrapTo2Pi(MeanMotion*currentTime0)<360-acos(radiusOfEarth/(radiusOfEarth+altitude))
+   if solarPressure>0 && wrapTo2Pi(MeanMotion*currentTime0)<acos(radiusOfEarth/(radiusOfEarth+altitude))...
+      && wrapTo2Pi(MeanMotion*currentTime0)<360-acos(radiusOfEarth/(radiusOfEarth+altitude))
      for k=1:size(gammas,2)
       for j=1:size(betas,2)
         for i=1:size(alphas,2)
           rotatedSunForceVector(:,i,j,k)=roty(wrapTo2Pi(MeanMotion*currentTime0))*solarpressureforcevector(:,i,j,k);
-          maxSolarForce=roty(wrapTo2Pi(MeanMotion*currentTime0))*[0 0 -1]'*2.8*solarPressure*refSurf;
-          solarForceVectorOfMaster=roty(wrapTo2Pi(MeanMotion*currentTime0))*[0 0 -1]'*1/2*2.8*solarPressure*refSurf;
+          maxSolarForce                 =roty(wrapTo2Pi(MeanMotion*currentTime0))*[0 0 -1]'*2.8*solarPressure*refSurf;
+          solarForceVectorOfMaster      =roty(wrapTo2Pi(MeanMotion*currentTime0))*[0 0 -1]'*1/2*2.8*solarPressure*refSurf;
         end
       end
      end
    else 
      rotatedSunForceVector=0*solarpressureforcevector;
-   end
+   end  
   
-  %% active master
-  if activeMaster           
-    maxforceVectorOfMaster=-2.8*windPressure*refSurf*[1 0 0]'-maxSolarForce';
+  if masterSatellite==0 %% no master satellite
+    for k=1:size(gammas,2)
+      for j=1:size(betas,2)
+        for i=1:size(alphas,2)
+          usedTotalForceVector(:,i,j,k) =aeropressureforcevector(:,i,j,k)+rotatedSunForceVector(:,i,j,k);
+        end
+      end
+    end    
+  elseif masterSatellite==1 %% active master satellite           
+    maxforceVectorOfMaster=-2.8*windPressure*refSurf*[1 0 0]'-maxSolarForce;
     if wakeAerodynamics %% wake aerodynamics
       if abs(sst0(2))<1.5 && abs(sst0(3))< 1.5 %% is sat2 aligned with sat1?
         if sst0(1) <= 0 %% is sat2 before sat1?
@@ -342,9 +387,9 @@ function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,f
         end
       end
     end
-    [forceVector,alphaOpt,betaOpt,gammaOpt]=findBestAerodynamicAngles(usedTotalForceVector,controlVector,alphas,betas,gammas,oldAlphaOpt,oldBetaOpt,oldGammaOpt);
-  %% passive master; wake aerodynamics not implemented
-  else                  
+
+    %% passive master; wake aerodynamics not implemented
+  elseif masterSatellite==2     %% passive master                  
     forceVectorOfMaster=-1/2*2.8*windPressure*refSurf*[1 0 0]'-solarForceVectorOfMaster;  
       for k=1:size(gammas,2)
         for j=1:size(betas,2)
@@ -353,8 +398,18 @@ function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,f
           end
         end
       end
-      [forceVector,alphaOpt,betaOpt,gammaOpt]=findBestAerodynamicAngles(usedTotalForceVector,controlVector,alphas,betas,gammas,oldAlphaOpt,oldBetaOpt,oldGammaOpt);
+  else
+    fprintf('\n error in defining master satellite \n');
+    input('error');
   end                   %% passive/active master switch
+  [forceVector,alphaOpt,betaOpt,gammaOpt]=findBestAerodynamicAngles(usedTotalForceVector,controlVector,alphas,betas,gammas,oldAlphaOpt,oldBetaOpt,oldGammaOpt);
+  %usedTotalForceVector
+  %controlVector
+  %forceVector
+  %masterSatellite
+  %input('xxx')
+  %fprintf('\n----------');
+  
   %% solve ODE with backward Euler step
   ssttemptemp(1:6)=(A*sst0(1:6)+B*forceVector/satelliteMass)*deltat+sst0(1:6);
   ssttemptemp(7:9)=[alphaOpt betaOpt gammaOpt]';
@@ -971,11 +1026,13 @@ function plotting(angles,sst,time,ns,MeanMotion,u,e)
 
   figure %% error
     for j=1:ns
-      for i=1:6
-        plot(time,squeeze(e(i,j,:)));hold on;
-      end
+      subplot(ns,1,j)
+        for i=1:3
+          plot(time,squeeze(e(i,j,:)));hold on;
+          legend;title('error')
+        end
     end
-    legend;title('error');hold off;
+    hold off;
 
   figure
    subplot(4,3,1)%% roll
