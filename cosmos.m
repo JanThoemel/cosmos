@@ -26,37 +26,26 @@
 clear all; close all;clc;format shortEng;
 oldpath = path; path(oldpath,'..\matlabfunctions\')
 
-%% simulation time constants
-totalTime         =15*90*60;    %% approximate multiples of orbit periods,[s]
-currentTime       =0;           %% now, should usually be 0
-time              =0;
-compStep          =9;          %% computational step size in s
-lengthControlLoop =90;         %% in s
-timetemp  =0:compStep:lengthControlLoop; %% duration and interpolation timestep for each control loop
-%fprintf('\nnumber of float variables for each control loop: %d, size %f kbyte',size(timetemp,2)*(1+6+6+3)+6+1,(size(timetemp,2)*(1+6+6+3)+6+1)*4/1024); %% size of time vector, state vector, desired state vector and anglevector, C and MeanMotion of analytical solution
-
 %% symbolic names of initial conditions and desired statevector functions
-%sstInitialFunction=@IRSRendezvousInitial;
-%sstDesiredFunction=@IRSRendezvousDesired;
-sstDesiredFunction=@IvanovFormationFlightDesired;
-sstInitialFunction=@IvanovFormationFlightInitial;
+sstInitialFunction=@IRSRendezvousInitial;
+%sstInitialFunction=@IvanovFormationFlightInitial;
+%sstInitialFunction=@cluxterInitial;
 
 %% actual initial conditions of ODE
-[sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satelliteMass,panelSurface]=...
-                                                    sstInitialFunction(currentTime+timetemp); 
+[sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satelliteMass,panelSurface,...
+  sstDesiredFunction,windOn,sunOn,deltaAngle,timetemp,totalTime,wakeAerodynamics,masterSatellite]=sstInitialFunction(); 
 
 %% settings for control algorithm
 [P,IR,A,B]=riccatiequation(MeanMotion);
 
 %% non-gravitational perturbations
-wind          =rho/2*v^2*[-1 0 0]';
-sunlight      =1*2*4.5e-6*[0 0 -1]';        %% at reference location, needs to be rotated later
+wind          =windOn*rho/2*v^2*[-1 0 0]';
+sunlight      =sunOn*2*4.5e-6*[0 0 -1]' ;       %% at reference location, needs to be rotated later
 
 %refsurf=panelSurface*panels(1);
 refSurf=panelSurface*panels(3);
 
 %% forcevector determination and its angular granulaty
-deltaAngle        =45;                   %% roll,pitch,yaw angle resolution
 alphas            =0:deltaAngle:360;     %% roll
 betas             =0:deltaAngle:180;     %% pitch 
 gammas            =0:deltaAngle:360;     %% yaw
@@ -69,18 +58,18 @@ solarpressureforcevector =solarpressureforcevectorfunction(sunlight,panelSurface
 %% features
 stopUponTarget=0;               %% stop upon target conditions, use only for rendezvous
 targetBox(1)=15;targetBox(2)=1;targetBox(3)=10;targetBox(4)=0.01;
-stopUponRunAway=0;               %% stop upon target leaving proximity of desired trajectory box
+stopUponRunAway=0;              %% stop upon target leaving proximity of desired trajectory box
 runAwayBox(1)=1000;runAwayBox(2)=1000;runAwayBox(3)=1000;runAwayBox(4)=1000;
-wakeAerodynamics=0;             %% use of wake aerodynamics
-masterSatellite=0;                 %% if 0 then passive Master
 
 %% parameters for visualization
 %! there are more parameters in the visualization function
-VIS_DO            =0;           %% do you want to create a google Earth/kml file/vizualization ? 0-no 1-yes
+VIS_DO            =1;           %% do you want to create a google Earth/kml file/vizualization ? 0-no 1-yes
 VIS_SCALE         =100;         %% scales deployment, formation size
-VIS_ACC_FACTOR    =120;         %% speeds up the Google Earth visualization
+VIS_ACC_FACTOR    =60;          %% speeds up the Google Earth visualization
 VIS_STEP          =60;          %% visualization step size in s
 VIS_MODELFILENAME =strcat('figures',filesep,'cocu.dae');
+VIS_FOOTPRINT     =0;
+VIS_US            =0;           %% should upper stage be shown?
 %% length of animation in min: totaltime/vis_step/accelerationfactor/60
 fprintf('duration of movie without upper stage flight: %2.1f min\n',totalTime/VIS_ACC_FACTOR/60) 
 
@@ -88,17 +77,19 @@ fprintf('duration of movie without upper stage flight: %2.1f min\n',totalTime/VI
 u             =zeros(3,ns);     %% control vector
 e             =zeros(6,ns);     %% error vector
 sst           =zeros(9,ns);     %% columns: statevector per each satellite
-
+time          =0;               %% timevector with all steps
+refPosChange  =zeros(3,1);
 utemp         =zeros(3,ns,size(timetemp,2));
 etemp         =zeros(6,ns,size(timetemp,2));
-
+refPosChangeTemp  =zeros(3,size(timetemp,2));
 %% set sst for initial step right because only further steps are computed
 sst(:,:,1)    =sstTemp(:,:,1);
 
 %% solving the ODE in chunks per each control period
-flops=0;
+flops         =0;
+firstTime     =1;
+currentTime   =0;           %% now, should usually be 0
 %figure
-firstTime=0;
 while currentTime<totalTime
   %% Desired state vector
   [sstDesiredtemp]=sstDesiredFunction(currentTime+timetemp,ns,MeanMotion);
@@ -106,7 +97,7 @@ while currentTime<totalTime
   %% apply disturbances
  
   for j=1:size(timetemp,2)-1    %% for each control loop within ODE solver loop
-    average=zeros(6,1);%[0 0 0 0 0 0]';
+    average=zeros(6,1);
     for i=1:ns
       %% compute error and average error
       etemp(:,i,j)=sstTemp(1:6,i,j)-sstDesiredtemp(1:6,i,j);
@@ -115,30 +106,35 @@ while currentTime<totalTime
       %fprintf('\ne %e %e %e %e %e %e',etemp(1,i,j),etemp(2,i,j),etemp(3,i,j),etemp(4,i,j),etemp(5,i,j),etemp(6,i,j));
     end
     
-    for i=1:ns
-      %% assign average error
-      etemp(:,i,j)=etemp(:,i,j)-average(:);
-      sstTemp(1:6,i,j)=sstTemp(1:6,i,j)-average(:);
-      flops=flops+6;
-      %fprintf('\ne %e %e %e %e %e %e',etemp(1,i,j),etemp(2,i,j),etemp(3,i,j),etemp(4,i,j),etemp(5,i,j),etemp(6,i,j));
+    if not(masterSatellite)
+      for i=1:ns
+        %% assign average error
+        etemp(2:6,i,j)=etemp(2:6,i,j)-average(2:6);
+        etemp(1,i,j)=etemp(1,i,j)-max(etemp(1,:,j));
+        flops=flops+6;
+      end
     end
-    if firstTime==0;
+      if firstTime==1
       %% set sst for initial step right because only further steps are computed
       sst(:,:,1)    =sstTemp(:,:,1);
-      firstTime=1;
-    end
+      firstTime=0;
+    end    
     
-    %% modify error vector with some averages according to Ivanov
-    %x(:,1,j+1)=[0 0 0 0 0 0]';
-    %utemp(:,1,j+1)=[-1.2 0 0]';
-    for i=1:ns %% for each satellite but not the master satellite
-      [sstTemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(IR,P,A,B,timetemp(j+1)-timetemp(j),...
-      sstTemp(:,i,j),etemp(:,i,j),flops,sqrt(wind(1)^2+wind(2)^2+wind(3)^2),sqrt(sunlight(1)^2+...
-      sunlight(2)^2+sunlight(3)^2),alphas,betas,gammas,aeropressureforcevector,...
-      solarpressureforcevector,sstTemp(7,i,j),sstTemp(8,i,j),sstTemp(9,i,j),refSurf,satelliteMass,...
-      wakeAerodynamics,masterSatellite,currentTime+timetemp(j),radiusOfEarth,altitude,MeanMotion);
+    for i=1:ns %% solve ODE for each satellite 
+      [sstTemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(...
+        IR,P,A,B,timetemp(j+1)-timetemp(j),sstTemp(:,i,j),etemp(:,i,j),flops,...
+        sqrt(wind(1)^2+wind(2)^2+wind(3)^2),sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2),...
+        alphas,betas,gammas,aeropressureforcevector,solarpressureforcevector,sstTemp(7,i,j),...
+        sstTemp(8,i,j),sstTemp(9,i,j),refSurf,satelliteMass,wakeAerodynamics,masterSatellite,...
+        currentTime+timetemp(j),radiusOfEarth,altitude,MeanMotion);
     end
-    
+    if not(masterSatellite)
+      refPosChangeTemp(:,j+1)=sstTemp(1:3,1,j+1)-sstTemp(1:3,1,j);
+      for i=1:ns %% move coordinate system
+        sstTemp(1:3,i,j+1)=sstTemp(1:3,i,j+1)-refPosChangeTemp(:,j+1);  
+        flops=flops+6;
+      end
+    end
     %% this is to interrupt when a condition, i.e. proximity is achieved, don't use if you start in
     %% proximity as for instance for formation flight 
     if stopUponTarget && abs(sstTemp(1,2,j))<targetBox(1) && abs(sstTemp(2,2,j))<targetBox(2) &&...
@@ -158,6 +154,7 @@ while currentTime<totalTime
   sst     =cat(3,sst,sstTemp(:,:,2:end));  
   u       =cat(3,u,utemp(:,:,2:end));   
   e       =cat(3,e,etemp(:,:,1:end-1));
+  refPosChange=cat(2,refPosChange,refPosChangeTemp(:,2:end));
   time    =[time ; currentTime+timetemp(2:end)'];  
   %% print progress of iterations to screen
   %fprintf('\n flops %d',flops);
@@ -187,13 +184,13 @@ end
 hold off;
 
 %% results' plotting
-plotting(sst(7:9,:,:),sst(1:6,:,:),time,ns,MeanMotion,u,e);
+plotting(sst(7:9,:,:),sst(1:6,:,:),refPosChange,time,ns,MeanMotion,u,e);
 pause(5);
 
 %% convert from classical ZYZ Euler angles to Google Earth Euler angles ZYX
-anglesGE=squeeze(sst(7:9,:,:));
+anglesGE=sst(7:9,:,:);
 for j=1:size(anglesGE,3)
-  for i=2:ns
+  for i=1:ns
     rotm            =eul2rotm(anglesGE(:,i,j)'/180*pi,'ZYZ');
     anglesGE(:,i,j) =rotm2eul(rotm,'ZYX')'/pi*180;
   end
@@ -201,133 +198,37 @@ end
 
 %% map on globe and create kml file
 if VIS_DO
-  visualization(ns,time,VIS_SCALE*squeeze(sst(1,:,:)),VIS_SCALE*squeeze(sst(2,:,:)),VIS_SCALE*squeeze(sst(3,:,:)),altitude,anglesGE, VIS_MODELFILENAME,radiusOfEarth,mu,VIS_STEP,VIS_ACC_FACTOR)
-end
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satelliteMass,panelSurface]=IRSRendezvousInitial(timetemptemp)
-% conditions for IRS's Discoverers mission:
-% r0=6778.137         %% km
-% inclinition=10;     %% degree
-% RAAN=45;            %% degree
-% argumentOfPerigee=130;  %% degree
-% truAnomaly=45;      %% degree
-% mass=10             %% kg
-% panelsurface=2*1.1  %% m
-%% position of deputy
-% z=82.5;             %% is x in publication
-% x=-930.46;          %% is y in publication
-% y=55.27;            %% is z in publication
-% w=-0.17;            %% is u in publication
-% u=-0.04;            %% is v in publication
-% v=0.29;             %% is w in publication
-%% in-plane maneuver is successful if deputy is within  10m in z-direction (x in publication) and 15m in x direction (y in publication).
-%% out-of-plane maneuver is success if y-direction (z in publication) distance is 1m and velocity is 1cm/s (I dont know what velocity)
-%% maneuver duration for the case described is: 4.2+14.2
-
-  %% only one independent satellite
-  ns=2;                         %% number of satellites
-  satelliteMass=10;             %% [kg]
-  argumentOfPerigeeAtTe0=0;     %% not used yet
-  trueAnomalyAtTe0=0;           %% not used yet
-  %% other constants
-  [~,~,radiusOfEarth,~,~]=orbitalproperties(500000); %% fake value is passed to get the physics value only
-  altitude=450000%6778137-radiusOfEarth;
-  [rho,v,radiusOfEarth,mu,MeanMotion]=orbitalproperties(altitude);
-  
-  %% satelliteshapeproperties, number of 10cmx10cm faces to x,y,z(body coordinates, normally aligned with):
-  panels=[0 0 2]; 
-  panelSurface=1.1;                %% [m^2]  
-  %startSecondPhase=8*2*pi/MeanMotion;   %% [s]
-  sstTemp=zeros(9,ns,size(timetemptemp,2));
-  %% initial condition
-  sstTemp(1,2,1)=-930.46;          %% x for rendezvous
-  sstTemp(2,2,1)=55.27;          %% y for rendezvous
-  sstTemp(3,2,1)=82.5;           %% z for rendezvous
-  sstTemp(4,2,1)=-0.04;          %% u for rendezvous
-  sstTemp(5,2,1)=0.29;          %% v for rendezvous
-  sstTemp(6,2,1)=-0.17;          %% w for rendezvous
-end
-
-function [sstDesired]=IRSRendezvousDesired(timetemptemp,ns,~)
-  sstDesired=zeros(9,ns,size(timetemptemp,2));
-  %% desired solution
-  sstDesired(1,2,:)=0.1;
-end
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satelliteMass,panelSurface]=IvanovFormationFlightInitial(timetemptemp)
-%% initial conditions for Ivanov
-  ns=4;
-  satelliteMass=1;
-  altitude=340000;                %% in m
-  argumentOfPerigeeAtTe0=0;       %% not used yet
-  trueAnomalyAtTe0=0;             %% not used yet
-  ejectionVelocity=0.5;           %% m/s
-  timeBetweenEjections=10;        %% in s
-  %startSecondPhase=8*2*pi/MeanMotion;  %% in s
-  panelSurface=0.01;              %% m^2  
-
-  %% other constants
-  [rho,v,radiusOfEarth,mu,MeanMotion]=orbitalproperties(altitude);
-  r0=radiusOfEarth+altitude;    %% in m
-  panels=[0 0 2]; 
-  sstTemp=zeros(9,ns,size(timetemptemp,2));
-  for i=2:ns
-      sstTemp(1,i,1)=(i-2)*ejectionVelocity*timeBetweenEjections; %% x position
-      sstTemp(4,i,1)=0;            %% u velocity
-      sstTemp(7,i,1)=0;           %% alpha
-      sstTemp(8,i,1)=0;           %% beta
-      sstTemp(9,i,1)=0;           %% gamma
+  if masterSatellite %% if a master satellite is used extend variables accordingly
+                      %% actually is only valid for passive master satellite
+    ns=ns+1;
+    sst         =cat(2,sst,zeros(size(sst,1),1,size(sst,3))); 
+    anglesGE    =cat(2,anglesGE,zeros(size(anglesGE,1),1,size(anglesGE,3))); 
+    VIS_MASTERFILENAME="figures/iss.dae";
+  else
+    VIS_MASTERFILENAME="";
   end
+  visualization(ns,time,VIS_SCALE*sst(1,:,:),VIS_SCALE*sst(2,:,:),VIS_SCALE*sst(3,:,:),altitude,anglesGE, VIS_MODELFILENAME,VIS_MASTERFILENAME,radiusOfEarth,mu,VIS_STEP,VIS_ACC_FACTOR,VIS_FOOTPRINT,VIS_US)
 end
-function [sstDesired]=IvanovFormationFlightDesired(timetemptemp,ns,MeanMotion)
-%% desired solution for Ivanov
-  sstDesired=zeros(9,ns,size(timetemptemp,2));
-  %% analytical solution according to Ivanov
-  AAA=100;    DDD=115;
-  %MeanMotion=MeanMotion/180*pi;
-  master=0;
-  sstDesired(1,1+master,:)=-DDD;
-  sstDesired(1,2+master,:)=DDD;
-
-  sstDesired(1,3+master,:)=2*AAA*        cos(MeanMotion*(timetemptemp)-acos(1/3));  
-  sstDesired(1,4+master,:)=2*AAA*        cos(MeanMotion*(timetemptemp));
-  sstDesired(2,3+master,:)=  AAA*sqrt(3)*sin(MeanMotion*(timetemptemp));
-  sstDesired(2,4+master,:)=  AAA*sqrt(3)*sin(MeanMotion*(timetemptemp)+acos(1/3));
-  sstDesired(3,3+master,:)=  AAA*        sin(MeanMotion*(timetemptemp)-acos(1/3));
-  sstDesired(3,4+master,:)=  AAA*        sin(MeanMotion*(timetemptemp));
-  
-  sstDesired(4,3+master,:)=2*AAA*       -sin(MeanMotion*(timetemptemp)-acos(1/3))*MeanMotion;  
-  sstDesired(4,4+master,:)=2*AAA*       -sin(MeanMotion*(timetemptemp))*MeanMotion;
-  sstDesired(5,3+master,:)=  AAA*sqrt(3)*cos(MeanMotion*(timetemptemp))*MeanMotion;
-  sstDesired(5,4+master,:)=  AAA*sqrt(3)*cos(MeanMotion*(timetemptemp)+acos(1/3))*MeanMotion;
-  sstDesired(6,3+master,:)=  AAA*        cos(MeanMotion*(timetemptemp)-acos(1/3))*MeanMotion;
-  sstDesired(6,4+master,:)=  AAA*        cos(MeanMotion*(timetemptemp))*MeanMotion;
-
-end
-
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -342,7 +243,7 @@ function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,f
   %% compute control vector
   controlVector=-IR*B'*P*e;
   flops=flops+size(IR,1)*(size(IR,1)-1)*size(IR,2)+0+0; 
-  solarForceVectorOfMaster=[0 0 0 ]';
+  solarForceVectorOfMaster=[0 0 0]';
   maxSolarForce=[0 0 0]';
   
   %% rotate sunforcevector if necessary
@@ -421,9 +322,18 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function visualization(ns,ttime,sstx,ssty,sstz,altitude,anglesGE,modelfilename,radiusOfEarth,mu,vis_step,accelerationfactor)
+
+function visualization(ns,ttime,sstx,ssty,sstz,altitude,anglesGE,modelfilename,masterfilename,radiusOfEarth,mu,vis_step,accelerationfactor,footprintyn,USyn)
   %% this function adds the global movement of the satellite based on Kepler's laws
   %this function works with km instead of m %!harmonize
+
+  dimsst = size(sstx);
+  sstx = reshape(sstx,[dimsst(2:end) 1]);
+  ssty = reshape(ssty,[dimsst(2:end) 1]);
+  sstz = reshape(sstz,[dimsst(2:end) 1]);
+
+  
+  
   RE = radiusOfEarth/1000;          % Earth's radius                            [km]
   muE = mu/1e9;    % Earth gravitational parameter             [km^3/sec^2]
   wE = (2*pi/86164);  % Earth rotation velocity aorund z-axis     [rad/sec]
@@ -523,17 +433,18 @@ function visualization(ns,ttime,sstx,ssty,sstz,altitude,anglesGE,modelfilename,r
     zaxvgrid(j,:)=interp1(ttime,squeeze(anglesGE(1,j,:)),t);
     yaxvgrid(j,:)=interp1(ttime,squeeze(anglesGE(2,j,:)),t);
     xaxvgrid(j,:)=interp1(ttime,squeeze(anglesGE(3,j,:)),t);
-%angles=zeros(3,ns);
-%anglestemp=zeros(3,ns,size(tspan,2));
-  
   end
-  for i=1:size(t,2)
-    %for j=1:ns
-      %MAXY=sqrt(max(sstxvgrid(j,i)^2+sstyvgrid(j,i)^2));
-    %end
-    MAXY=abs(sstyvgrid(2,i));
-    %footprintsize(i)=MAXY*1e2;%round(  MAXY/10^floor(log10(MAXY)) )  *  1e4;
-    footprintsize(i)=(200000-10000)/2000*MAXY+10000;%round(  MAXY/10^floor(log10(MAXY)) )  *  1e4;
+  if footprintyn
+    for i=1:size(t,2)
+      %for j=1:ns
+        %MAXY=sqrt(max(sstxvgrid(j,i)^2+sstyvgrid(j,i)^2));
+      %end
+      MAXY=abs(sstyvgrid(2,i));
+      %footprintsize(i)=MAXY*1e2;%round(  MAXY/10^floor(log10(MAXY)) )  *  1e4;
+      footprintsize(i)=(200000-10000)/2000*MAXY+10000;%round(  MAXY/10^floor(log10(MAXY)) )  *  1e4;
+    end
+  else
+    footprintsize=zeros(size(t,2));
   end
   %% centerpoint
   Lat(1,:)     =  asin(sin(inclination).*sin(theta))/pi*180;              % Latitude             [deg]
@@ -542,7 +453,7 @@ function visualization(ns,ttime,sstx,ssty,sstz,altitude,anglesGE,modelfilename,r
   %% satellites
   for j=1:ns
     latoff(j,:)      = asin(  sstxvgrid(j,:)/1000  ./  (rs(:,1)'  + sstzvgrid(j,:)/1000) ); %%latitude offset
-    longoff(j,:)      = asin( sstyvgrid(j,:)/1000   ./   (rs(:,1)' + sstzvgrid(j,:)/1000) ); %%longitude offset
+    longoff(j,:)     = asin( sstyvgrid(j,:)/1000   ./   (rs(:,1)' + sstzvgrid(j,:)/1000) ); %%longitude offset
   end
   for i=1:size(t,2)-1
       for j=2:ns+1
@@ -616,7 +527,7 @@ figure
    figure
       subplot(3,1,1)
       for j=1:ns+1
-        plot(t/3600,Lat(j,:),t/3600,footprintsize/3e4,t/3600,sstyvgrid(2,:)/50)
+%        plot(t/3600,Lat(j,:),t/3600,footprintsize/3e4,t/3600,sstyvgrid(2,:)/50)
         hold on
       end
       ylabel("Lat");
@@ -634,16 +545,15 @@ figure
       ylabel("rs2");
       
   %% write KML file
-  writeKML(Lat,Long,rs2,t,ns,zaxvgrid,yaxvgrid,xaxvgrid,modelfilename,footprintsize,accelerationfactor)
+  writeKML(Lat,Long,rs2,t,ns,zaxvgrid,yaxvgrid,xaxvgrid,modelfilename,masterfilename,footprintsize,accelerationfactor,footprintyn,USyn)
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function writeKML(Lat,Long,rs,t,ns,zaxvgrid,yaxvgrid,xaxvgrid,modelfilename,footprintsize,accelerationfactor)
+function writeKML(Lat,Long,rs,t,ns,zaxvgrid,yaxvgrid,xaxvgrid,modelfilename,masterfilename,footprintsize,accelerationfactor,footprintyn,USyn)
 %function writeKML(Lat,Long,rs,t,ns,angles,modelfilename)
-  
   %! simulation cannot be longer than a day
   %! why division by 60 twice?
   %! can do only inclination=90 deg
@@ -860,33 +770,40 @@ function writeKML(Lat,Long,rs,t,ns,zaxvgrid,yaxvgrid,xaxvgrid,modelfilename,foot
   end
   fprintf(id,'\n</gx:Playlist></gx:Tour>');
     
-  %% US path
-  fprintf(id,'\n<Placemark><name>US</name><styleUrl>#stylesel_0</styleUrl><gx:Track><altitudeMode>absolute</altitudeMode>');     
-  fprintf(id,'\n   <Model id="geom_0"><altitudeMode>absolute</altitudeMode>');
-  fprintf(id,'\n      <Orientation><heading>0.0</heading><tilt>90</tilt><roll>0</roll></Orientation>');
-  fprintf(id,'\n      <Scale><x>10000</x><y>10000</y><z>10000</z></Scale>');
-  fprintf(id,'\n      <Link id="link_0"><href>figures/simpleUS.dae</href></Link>');
-  fprintf(id,'\n    </Model>');
-  for i=1:size(UStime,2)
-    fprintf(id,'\n<gx:coord> %f %f %f</gx:coord>',USLong(i),USLat(i),(USrs(i)-6371)*1000); 
-  end 
-  for i=1:size(UStime,2)
-    pointintime=strcat(datestr(initialtime+UStime(i)/24/60/60,29),'T',datestr(initialtime+UStime(i)/24/60/60,13),'Z');
-    fprintf(id,'\n<when> %s </when>',pointintime);
+  
+  if USyn
+    %% US path
+    fprintf(id,'\n<Placemark><name>US</name><styleUrl>#stylesel_0</styleUrl><gx:Track><altitudeMode>absolute</altitudeMode>');     
+    fprintf(id,'\n   <Model id="geom_0"><altitudeMode>absolute</altitudeMode>');
+    fprintf(id,'\n      <Orientation><heading>0.0</heading><tilt>90</tilt><roll>0</roll></Orientation>');
+    fprintf(id,'\n      <Scale><x>10000</x><y>10000</y><z>10000</z></Scale>');
+    fprintf(id,'\n      <Link id="link_0"><href>figures/simpleUS.dae</href></Link>');
+    fprintf(id,'\n    </Model>');
+    for i=1:size(UStime,2)
+      fprintf(id,'\n<gx:coord> %f %f %f</gx:coord>',USLong(i),USLat(i),(USrs(i)-6371)*1000); 
+    end 
+    for i=1:size(UStime,2)
+      pointintime=strcat(datestr(initialtime+UStime(i)/24/60/60,29),'T',datestr(initialtime+UStime(i)/24/60/60,13),'Z');
+      fprintf(id,'\n<when> %s </when>',pointintime);
+    end
+    %for i=1:size(UStime,2)
+      % fprintf(id,'\n<gx:angles>%f %f %f</gx:angles>',angles(j-1,1,i),angles(j-1,2,i),angles(j-1,3,i));
+    %end 
+    fprintf(id,'\n  </gx:Track></Placemark>');
   end
-  %for i=1:size(UStime,2)
-    % fprintf(id,'\n<gx:angles>%f %f %f</gx:angles>',angles(j-1,1,i),angles(j-1,2,i),angles(j-1,3,i));
-  %end 
-  fprintf(id,'\n  </gx:Track></Placemark>');
-
   
    %% satellites' time, angles and coordinates
   for j=2:ns+1
     fprintf(id,'\n<Placemark><name>sat%d</name><styleUrl>#stylesel_0</styleUrl><gx:Track><altitudeMode>absolute</altitudeMode>',j-1);     
     fprintf(id,'\n   <Model id="geom_0"><altitudeMode>absolute</altitudeMode>');
     fprintf(id,'\n      <Orientation><heading>90.0</heading><tilt>0</tilt><roll>0</roll></Orientation>');
-    fprintf(id,'\n      <Scale><x>%f</x><y>%f</y><z>%f</z></Scale>',modelscalex,modelscaley,modelscalez);
-    fprintf(id,'\n      <Link id="link_0"><href>%s</href></Link>',modelfilename);
+    if j==ns+1 && masterfilename~=""
+      fprintf(id,'\n      <Link id="link_0"><href>%s</href></Link>',masterfilename);
+      fprintf(id,'\n      <Scale><x>%f</x><y>%f</y><z>%f</z></Scale>',3*modelscalex,3*modelscaley,3*modelscalez);
+    else
+      fprintf(id,'\n      <Link id="link_0"><href>%s</href></Link>',modelfilename);
+      fprintf(id,'\n      <Scale><x>%f</x><y>%f</y><z>%f</z></Scale>',modelscalex,modelscaley,modelscalez);
+    end
     fprintf(id,'\n   </Model>');
 
     for i=1:size(t,2)
@@ -904,27 +821,29 @@ function writeKML(Lat,Long,rs,t,ns,zaxvgrid,yaxvgrid,xaxvgrid,modelfilename,foot
     fprintf(id,'\n  </gx:Track></Placemark>');
    end
    k=1;
-   while k<size(footprintsize,2)
-     fprintf(id,'\n<Placemark><name>centerpoint</name><styleUrl>#stylesel_0</styleUrl>>');     
-     fprintf(id,'\n   <Model id="geom_1"><altitudeMode>relativeToGround</altitudeMode>');
-     fprintf(id,'\n       <Orientation><heading>90.0</heading><tilt>0</tilt><roll>0</roll></Orientation>');        
-     fprintf(id,'\n       <Scale><x>%f</x><y>%f</y><z>%f</z></Scale>',footprintsize(k),footprintsize(k),footprintsize(k)); 
-     fprintf(id,'\n       <Location>');
-     fprintf(id,'\n        <longitude>%f</longitude> <!-- kml:angle180 -->',Long(1,k)); %% below virtual satellite
-     fprintf(id,'\n        <latitude>%f</latitude>   <!-- kml:angle90 -->',Lat(1,k));%% below virtual satellite
-     fprintf(id,'\n       <altitude>%f</altitude>  <!-- double -->',100);
-     fprintf(id,'\n       </Location>');
-     fprintf(id,'\n       <Link id="link_1"><href>figures%storus.dae</href></Link>',filesep);
-     fprintf(id,'\n    </Model>');
-     milliseconds=round(1000*(initialtime*24*60*60+t(i)-floor(initialtime*24*60*60+t(i))));
-     pointintime=strcat(datestr(initialtime,29),'T',datestr(initialtime+t(k)/24/60/60,13),'.',num2str(milliseconds),'Z');
-     fprintf(id,'\n     <TimeStamp><when> %s </when></TimeStamp>',pointintime);
-     fprintf(id,'\n</Placemark>');  
-     k=k+1;
-    end
-    fprintf(id,'\n  </Folder>');
-    fprintf(id,'\n </kml>');
-    fclose(id);
+   if footprintyn
+     while k<size(footprintsize,2)
+       fprintf(id,'\n<Placemark><name>centerpoint</name><styleUrl>#stylesel_0</styleUrl>>');     
+       fprintf(id,'\n   <Model id="geom_1"><altitudeMode>relativeToGround</altitudeMode>');
+       fprintf(id,'\n       <Orientation><heading>90.0</heading><tilt>0</tilt><roll>0</roll></Orientation>');        
+       fprintf(id,'\n       <Scale><x>%f</x><y>%f</y><z>%f</z></Scale>',footprintsize(k),footprintsize(k),footprintsize(k)); 
+       fprintf(id,'\n       <Location>');
+       fprintf(id,'\n        <longitude>%f</longitude> <!-- kml:angle180 -->',Long(1,k)); %% below virtual satellite
+       fprintf(id,'\n        <latitude>%f</latitude>   <!-- kml:angle90 -->',Lat(1,k));%% below virtual satellite
+       fprintf(id,'\n       <altitude>%f</altitude>  <!-- double -->',100);
+       fprintf(id,'\n       </Location>');
+       fprintf(id,'\n       <Link id="link_1"><href>figures%storus.dae</href></Link>',filesep);
+       fprintf(id,'\n    </Model>');
+       milliseconds=round(1000*(initialtime*24*60*60+t(i)-floor(initialtime*24*60*60+t(i))));
+       pointintime=strcat(datestr(initialtime,29),'T',datestr(initialtime+t(k)/24/60/60,13),'.',num2str(milliseconds),'Z');
+       fprintf(id,'\n     <TimeStamp><when> %s </when></TimeStamp>',pointintime);
+       fprintf(id,'\n</Placemark>');  
+       k=k+1;
+     end
+   end
+   fprintf(id,'\n  </Folder>');
+   fprintf(id,'\n </kml>');
+   fclose(id);
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -998,8 +917,8 @@ function [P,IR,A,B]=riccatiequation(MeanMotion)
   %R=diag([1e12 1e12 1e12]);    %% This is an R of Traub %550, -2900 
   %R=diag([1e13 1e14 1e14]);    %% this is my R assuming Ivanov made a sign error (reported IR/R^-1 instead of R)
   %R=diag([1e13 1e13 1e13]);     %% 550, -2900 
-  %R=diag([1e14 1e14 1e14]);    %% 550, -2900
-  R=diag([1e15 1e15 1e15]);    %% 550, -2900
+  R=diag([1e14 1e14 1e14]);    %% 550, -2900
+  %R=diag([1e15 1e15 1e15]);    %% 550, -2900
   %R=diag([1e16 1e16 1e16]);    %% 550, -2900
   %R=diag([1e17 1e17 1e17]);    %% 550, -2900
   %R=diag([1e18 1e18 1e18]);    %% 550, -2900
@@ -1022,9 +941,9 @@ function [P,IR,A,B]=riccatiequation(MeanMotion)
  [P,~,~] = care(A,B,Q,R,S,E2);
 end
 
-function plotting(angles,sst,time,ns,MeanMotion,u,e)
+function plotting(angles,sst,refPosChange,time,ns,MeanMotion,u,e)
 
-  figure %% error
+  %figure %% error
     for j=1:ns
       subplot(ns,1,j)
         for i=1:3
@@ -1033,7 +952,13 @@ function plotting(angles,sst,time,ns,MeanMotion,u,e)
         end
     end
     hold off;
-
+    
+    
+  figure %% reference position change
+    plot(time,refPosChange(1,:),time,refPosChange(2,:),time,refPosChange(3,:));
+    legend('x','y','z');title('reference position change')
+    hold off;  
+    
   figure
    subplot(4,3,1)%% roll
      for i=1:ns
@@ -1109,12 +1034,12 @@ function plotting(angles,sst,time,ns,MeanMotion,u,e)
       fontSize=40;
       lineWidth=1;
       for i=1:ns
-        plot3(squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'-','LineWidth',lineWidth);hold on
+        plot3(squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'-','LineWidth',lineWidth);hold on;
         %plot3(xzyplane(1,:),xzyplane(2,:),xzyplane(3,:),squeeze(sst(1,i,:)),squeeze(sst(2,i,:)),squeeze(sst(3,i,:)),'LineWidth',lineWidth);hold on
       end
-      %xlabel('X [m]','FontSize', fontSize);ylabel('Y [m]','FontSize', fontSize);zlabel('Z [m]','FontSize', fontSize);
-      %legend('this research','FontSize', fontSize);     
-      %xlabel('X [m]','FontSize', fontSize);ylabel('Y [m]','FontSize', fontSize);zlabel('Z [m]','FontSize', fontSize);
+      xlabel('X [m]','FontSize', fontSize);ylabel('Y [m]','FontSize', fontSize);zlabel('Z [m]','FontSize', fontSize);
+      %legend('this research','FontSize', fontSize);  
+      legend('sat 1','sat 2','sat 3','FontSize', fontSize,'units','centimeters','Position',[19 15.5 1 1])
       %legend('w/o solar pressure','w/ solar pressure','FontSize', fontSize,'units','centimeters','Position',[15 17 1 1]);
       grid on;axis equal;
       set(gcf,'units','centimeters','position',[0,0,27,20]);
@@ -1124,10 +1049,10 @@ function plotting(angles,sst,time,ns,MeanMotion,u,e)
       %xticks([-2000 -1000 0 ]);yticks([-200 200]);zticks([-200 200]);
       %view([1 -0.5 0.5]);
       %set(gcf, 'InvertHardCopy', 'off');
+      %title('3d');
       hold off;
 
-      %savefig('sst3d.fig');
-      %print('-painters','-dpdf','sst3d.pdf')
+      savefig('sst3d.fig');
       print('-painters','-dmeta','sst3d.emf')
 
   end
@@ -1140,7 +1065,7 @@ function plotting(angles,sst,time,ns,MeanMotion,u,e)
         box off;
         legend('Traub et al. [4] ','this research in-plane','this research in/out-of-plane','FontSize', fontSize,'Units','centimeters','Position',[16 16 1 1]);
         
-        %set(gca,'FontSize',40);
+        %set(gca,'FontSize',fontSize);
         %set(gcf,'units','centimeters','position',[0,0,25,20])
         %legend('w/o solar pressure','w/ solar pressure','FontSize', fontSize,'Units','centimeters','Position',[12 17 1 1]);
         set(gcf,'units','centimeters','position',[0,0,27,20]);
@@ -1153,6 +1078,269 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satelliteMass,panelSurface,...
+  sstDesiredFunction,windOn,sunOn,deltaAngle,timetemp,totalTime,wakeAerodynamics,masterSatellite]...
+  =IRSRendezvousInitial()
+% initial conditions for IRS's Discoverers mission:
+% r0=6778.137         %% km
+% inclinition=10;     %% degree
+% RAAN=45;            %% degree
+% argumentOfPerigee=130;  %% degree
+% truAnomaly=45;      %% degree
+% mass=10             %% kg
+% panelsurface=2*1.1  %% m
+%% position of deputy
+% z=82.5;             %% is x in publication
+% x=-930.46;          %% is y in publication
+% y=55.27;            %% is z in publication
+% w=-0.17;            %% is u in publication
+% u=-0.04;            %% is v in publication
+% v=0.29;             %% is w in publication
+%% in-plane maneuver is successful if deputy is within  10m in z-direction (x in publication) and 15m in x direction (y in publication).
+%% out-of-plane maneuver is success if y-direction (z in publication) distance is 1m and velocity is 1cm/s (I dont know what velocity)
+%% maneuver duration for the case described is: 4.2+14.2
+
+  totalTime         =4*90*60;   %% simulation period (approximate multiples of orbit periods),[s]
+  compStep          =9;          %% computational step size in [s]
+  lengthControlLoop =90;         %% in [s]
+  timetemp  =0:compStep:lengthControlLoop; %% duration and interpolation timestep for each control loop
+  wakeAerodynamics=0;             %% use of wake aerodynamics
+  masterSatellite=2;              %% if 0 no master, 1 active master, 2 passive master,
+
+  
+  sstDesiredFunction=@IRSRendezvousDesired;
+  windOn      =1;
+  sunOn       =0;
+  deltaAngle  =45;              %% roll,pitch,yaw angle resolution
+  ns          =1;               %% number of satellites
+  satelliteMass=10;             %% [kg]
+  argumentOfPerigeeAtTe0=0;     %% not used yet
+  trueAnomalyAtTe0=0;           %% not used yet
+  %% other constants
+  [~,~,radiusOfEarth,~,~]=orbitalproperties(500000); %% fake value is passed to get the physics value only
+  altitude=6778137-radiusOfEarth;
+  [rho,v,radiusOfEarth,mu,MeanMotion]=orbitalproperties(altitude);
+  
+  %% satelliteshapeproperties, number of 10cmx10cm faces to x,y,z(body coordinates, normally aligned with):
+  panels=[0 0 2]; 
+  panelSurface=1.1;                %% [m^2]  
+  %% initial condition
+  sstTemp=zeros(9,ns,size(timetemp,2));
+end
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function [sstDesired]=IRSRendezvousDesired(timetemptemp,ns,~)
+%% desired IRS rendezvous solution
+  startSecondPhase=2*90*60;   %% [s]
+  sstDesired=zeros(9,ns,size(timetemptemp,2));
+
+  if timetemptemp<startSecondPhase
+    sstDesired(1,1,:)=-930.46;          %% x for rendezvous
+    %sstDesired(2,2,1)=55.27;          %% y for rendezvous
+    %sstDesired(3,2,1)=82.5;           %% z for rendezvous
+    %sstDesired(4,2,1)=-0.04;          %% u for rendezvous
+    %sstDesired(5,2,1)=0.29;          %% v for rendezvous
+    %sstDesired(6,2,1)=-0.17;          %% w for rendezvous
+  else
+    sstDesired(1,1,:)=0.1;
+  end
+ % sstDesired
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satelliteMass,panelSurface,...
+          sstDesiredFunction,windOn,sunOn,deltaAngle,timetemp,totalTime,wakeAerodynamics,masterSatellite]...
+          =IvanovFormationFlightInitial()
+%% initial conditions for Ivanov
+
+  totalTime         =50*90*60;   %% simulation period (approximate multiples of orbit periods),[s]
+  compStep          =9;          %% computational step size in [s]
+  lengthControlLoop =90;         %% in [s]
+  timetemp  =0:compStep:lengthControlLoop; %% duration and interpolation timestep for each control loop
+  wakeAerodynamics=0;             %% use of wake aerodynamics
+  masterSatellite=2;              %% if 0 no master, 1 active master, 2 passive master,
+
+
+  sstDesiredFunction=@IvanovFormationFlightDesired;
+  windOn=1;
+  sunOn=0;
+  deltaAngle        =45;                   %% roll,pitch,yaw angle resolution
+  ns=4;
+  satelliteMass=1;
+  altitude=340000;                %% in m
+  argumentOfPerigeeAtTe0=0;       %% not used yet
+  trueAnomalyAtTe0=0;             %% not used yet
+  ejectionVelocity=0.5;           %% m/s
+  timeBetweenEjections=10;        %% in s
+  %startSecondPhase=8*2*pi/MeanMotion;  %% in s
+  panelSurface=0.01;              %% m^2  
+
+  %% other constants
+  [rho,v,radiusOfEarth,mu,MeanMotion]=orbitalproperties(altitude);
+  r0=radiusOfEarth+altitude;    %% in m
+  panels=[0 0 2]; 
+  sstTemp=zeros(9,ns,size(timetemp,2));
+  for i=2:ns
+      sstTemp(1,i,1)=(i-2)*ejectionVelocity*timeBetweenEjections; %% x position
+      sstTemp(4,i,1)=0;            %% u velocity
+      sstTemp(7,i,1)=0;           %% alpha
+      sstTemp(8,i,1)=0;           %% beta
+      sstTemp(9,i,1)=0;           %% gamma
+  end
+end
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function [sstDesired]=IvanovFormationFlightDesired(timetemptemp,ns,MeanMotion)
+%% desired solution for Ivanov
+  sstDesired=zeros(9,ns,size(timetemptemp,2));
+  %% analytical solution according to Ivanov
+  AAA=100;    DDD=115;
+  %MeanMotion=MeanMotion/180*pi;
+  master=0;
+  sstDesired(1,1+master,:)=-DDD;
+  sstDesired(1,2+master,:)=DDD;
+
+  sstDesired(1,3+master,:)=2*AAA*        cos(MeanMotion*(timetemptemp)-acos(1/3));  
+  sstDesired(1,4+master,:)=2*AAA*        cos(MeanMotion*(timetemptemp));
+  sstDesired(2,3+master,:)=  AAA*sqrt(3)*sin(MeanMotion*(timetemptemp));
+  sstDesired(2,4+master,:)=  AAA*sqrt(3)*sin(MeanMotion*(timetemptemp)+acos(1/3));
+  sstDesired(3,3+master,:)=  AAA*        sin(MeanMotion*(timetemptemp)-acos(1/3));
+  sstDesired(3,4+master,:)=  AAA*        sin(MeanMotion*(timetemptemp));
+  
+  sstDesired(4,3+master,:)=2*AAA*       -sin(MeanMotion*(timetemptemp)-acos(1/3))*MeanMotion;  
+  sstDesired(4,4+master,:)=2*AAA*       -sin(MeanMotion*(timetemptemp))*MeanMotion;
+  sstDesired(5,3+master,:)=  AAA*sqrt(3)*cos(MeanMotion*(timetemptemp))*MeanMotion;
+  sstDesired(5,4+master,:)=  AAA*sqrt(3)*cos(MeanMotion*(timetemptemp)+acos(1/3))*MeanMotion;
+  sstDesired(6,3+master,:)=  AAA*        cos(MeanMotion*(timetemptemp)-acos(1/3))*MeanMotion;
+  sstDesired(6,4+master,:)=  AAA*        cos(MeanMotion*(timetemptemp))*MeanMotion;
+
+end
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satelliteMass,panelSurface,...
+  sstDesiredFunction,windOn,sunOn,deltaAngle,timetemp,totalTime,wakeAerodynamics,masterSatellite]=cluxterInitial()
+%% initial conditions for Cluxter Mission
+
+
+%% simulation time constants
+  totalTime         =50*90*60;   %% simulation period (approximate multiples of orbit periods),[s]
+  compStep          =9;          %% computational step size in [s]
+  lengthControlLoop =90;         %% in [s]
+  timetemp  =0:compStep:lengthControlLoop; %% duration and interpolation timestep for each control loop
+  %fprintf('\nnumber of float variables for each control loop: %d, size %f kbyte',size(timetemp,2)*(1+6+6+3)+6+1,(size(timetemp,2)*(1+6+6+3)+6+1)*4/1024); %% size of time vector, state vector, desired state vector and anglevector, C and MeanMotion of analytical solution
+  wakeAerodynamics=0;             %% use of wake aerodynamics
+  masterSatellite=0;              %% if 0 no master, 1 active master, 2 passive master,
+
+
+  sstDesiredFunction=@cluxterDesired;
+  windOn       =1;
+  sunOn        =0;
+  deltaAngle   =45;                   %% roll,pitch,yaw angle resolution
+
+  ns=3;
+  satelliteMass=1;
+  altitude=600000;                %% in m
+  argumentOfPerigeeAtTe0=0;       %% not used yet
+  trueAnomalyAtTe0=0;             %% not used yet
+  ejectionVelocity=1;           %% m/s
+  timeBetweenEjections=4;        %% in s
+  %startSecondPhase=8*2*pi/MeanMotion;  %% in s
+  panelSurface=0.01;              %% m^2  
+
+  %% other constants
+  [rho,v,radiusOfEarth,mu,MeanMotion]=orbitalproperties(altitude);
+  r0=radiusOfEarth+altitude;    %% in m
+  panels=[0 0 2]; 
+  sstTemp=zeros(9,ns,size(timetemp,2));
+  for i=1:ns
+      sstTemp(1,i,1)=(i-1)*ejectionVelocity*timeBetweenEjections; %% x position
+      sstTemp(4,i,1)=0;           %% u velocity
+      sstTemp(7,i,1)=0;           %% alpha
+      sstTemp(8,i,1)=0;           %% beta
+      sstTemp(9,i,1)=0;           %% gamma
+  end
+end
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function [sstDesired]=cluxterDesired(timetemptemp,ns,MeanMotion)
+%% desired solution for Cluxter mission
+  sstDesired=zeros(9,ns,size(timetemptemp,2));
+  %% analytical solution according to Ivanov
+  if timetemptemp<100000*90*60
+    AAA=7;    DDD=15;
+  else
+    AAA=14;    DDD=30;    
+  end
+  sstDesired(1,1,:)=-DDD;
+
+  sstDesired(1,2,:)=2*AAA*        cos(MeanMotion*(timetemptemp)-acos(1/3)+pi/2);  
+  sstDesired(2,2,:)=  AAA*sqrt(3)*sin(MeanMotion*(timetemptemp)+pi/2);
+  sstDesired(3,2,:)=  AAA*        sin(MeanMotion*(timetemptemp)-acos(1/3)+pi/2);
+  
+  sstDesired(4,2,:)=2*AAA*       -sin(MeanMotion*(timetemptemp)-acos(1/3)+pi/2)*MeanMotion;  
+  sstDesired(5,2,:)=  AAA*sqrt(3)*cos(MeanMotion*(timetemptemp)+pi/2)*MeanMotion;
+  sstDesired(6,2,:)=  AAA*        cos(MeanMotion*(timetemptemp)-acos(1/3)+pi/2)*MeanMotion;
+
+  sstDesired(1,3,:)=DDD;
+
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 %{
