@@ -27,8 +27,8 @@ clear all; close all;clc;format shortEng;
 oldpath = path; path(oldpath,'..\matlabfunctions\')
 
 %% symbolic names of initial conditions and desired statevector functions
-sstInitialFunction=@IRSRendezvousInitial;
-%sstInitialFunction=@IvanovFormationFlightInitial;
+%sstInitialFunction=@IRSRendezvousInitial;
+sstInitialFunction=@IvanovFormationFlightInitial;
 %sstInitialFunction=@cluxterInitial;
 
 %% actual initial conditions of ODE
@@ -63,13 +63,13 @@ runAwayBox(1)=1000;runAwayBox(2)=1000;runAwayBox(3)=1000;runAwayBox(4)=1000;
 
 %% parameters for visualization
 %! there are more parameters in the visualization function
-VIS_DO            =1;           %% do you want to create a google Earth/kml file/vizualization ? 0-no 1-yes
+VIS_DO            =0;           %% do you want to create a google Earth/kml file/vizualization ? 0-no 1-yes
 VIS_SCALE         =100;         %% scales deployment, formation size
 VIS_ACC_FACTOR    =60;          %% speeds up the Google Earth visualization
 VIS_STEP          =60;          %% visualization step size in s
 VIS_MODELFILENAME =strcat('figures',filesep,'cocu.dae');
-VIS_FOOTPRINT     =0;
-VIS_US            =0;           %% should upper stage be shown?
+VIS_FOOTPRINT     =0;           %% should a sensor footprint be shown?
+VIS_US            =0;           %% should upper stage (US) be shown?
 %% length of animation in min: totaltime/vis_step/accelerationfactor/60
 fprintf('duration of movie without upper stage flight: %2.1f min\n',totalTime/VIS_ACC_FACTOR/60) 
 
@@ -92,35 +92,37 @@ currentTime   =0;           %% now, should usually be 0
 %figure
 while currentTime<totalTime
   %% Desired state vector
-  [sstDesiredtemp]=sstDesiredFunction(currentTime+timetemp,ns,MeanMotion);
-  flops=flops+0;
+  for i=1:ns
+    [sstDesiredtemp(:,i,:)]=sstDesiredFunction(currentTime+timetemp,ns,MeanMotion,i);
+  end
   %% apply disturbances
- 
-  for j=1:size(timetemp,2)-1    %% for each control loop within ODE solver loop
-    average=zeros(6,1);
+  %! disturbances
+  
+  %% control loop within ODE solver loop
+  for j=1:size(timetemp,2)-1
     for i=1:ns
-      %% compute error and average error
-      etemp(:,i,j)=sstTemp(1:6,i,j)-sstDesiredtemp(1:6,i,j);
-      average(:)=average(:)+etemp(:,i,j)/ns;
-      flops=flops+6;
+      %% compute error
+      etemp(:,i,j)=sstTemp(1:6,i,j)-sstDesiredtemp(1:6,i,j);  %% ISL
       %fprintf('\ne %e %e %e %e %e %e',etemp(1,i,j),etemp(2,i,j),etemp(3,i,j),etemp(4,i,j),etemp(5,i,j),etemp(6,i,j));
     end
     
-    if not(masterSatellite)
+    if not(masterSatellite) %% if there is no master satellite, the error will be distributed and x will be shifted    
+      averageError=zeros(6,1);
       for i=1:ns
-        %% assign average error
-        etemp(2:6,i,j)=etemp(2:6,i,j)-average(2:6);
+        %% compute average error      
+        averageError(:)=averageError(:)+etemp(:,i,j)/ns;
+        flops=flops+6;
+      end
+      for i=1:ns
+        %% assign average error, shift x
+        etemp(2:6,i,j)=etemp(2:6,i,j)-averageError(2:6);
         etemp(1,i,j)=etemp(1,i,j)-max(etemp(1,:,j));
         flops=flops+6;
       end
-    end
-      if firstTime==1
-      %% set sst for initial step right because only further steps are computed
-      sst(:,:,1)    =sstTemp(:,:,1);
-      firstTime=0;
-    end    
-    
-    for i=1:ns %% solve ODE for each satellite 
+    end  
+   
+    %% solve ODE for each satellite 
+    for i=1:ns 
       [sstTemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(...
         IR,P,A,B,timetemp(j+1)-timetemp(j),sstTemp(:,i,j),etemp(:,i,j),flops,...
         sqrt(wind(1)^2+wind(2)^2+wind(3)^2),sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2),...
@@ -128,13 +130,16 @@ while currentTime<totalTime
         sstTemp(8,i,j),sstTemp(9,i,j),refSurf,satelliteMass,wakeAerodynamics,masterSatellite,...
         currentTime+timetemp(j),radiusOfEarth,altitude,MeanMotion);
     end
-    if not(masterSatellite)
-      refPosChangeTemp(:,j+1)=sstTemp(1:3,1,j+1)-sstTemp(1:3,1,j);
+    
+    %% if there is no mastersatellite the coordinate system, based at sat1 will be shifted
+    if not(masterSatellite) 
+      refPosChangeTemp(:,j+1)=sstTemp(1:3,1,j+1)-sstTemp(1:3,1,j); %% ISL
       for i=1:ns %% move coordinate system
-        sstTemp(1:3,i,j+1)=sstTemp(1:3,i,j+1)-refPosChangeTemp(:,j+1);  
+        sstTemp(1:3,i,j+1)=sstTemp(1:3,i,j+1)-refPosChangeTemp(:,j+1);
         flops=flops+6;
       end
     end
+        
     %% this is to interrupt when a condition, i.e. proximity is achieved, don't use if you start in
     %% proximity as for instance for formation flight 
     if stopUponTarget && abs(sstTemp(1,2,j))<targetBox(1) && abs(sstTemp(2,2,j))<targetBox(2) &&...
@@ -146,7 +151,13 @@ while currentTime<totalTime
            sstTemp(6,2,j)^2)>runAwayBox(4)
       break;
     end
-  end %j
+  end  %% end of control loop
+
+  if firstTime==1
+    %% set sst for initial step right because only further steps are computed
+    sst(:,:,1)    =sstTemp(:,:,1);
+    firstTime=0;
+  end    
   sstTemp(:,:,1)=sstTemp(:,:,end);
  
   fprintf('\n');
@@ -434,6 +445,7 @@ function visualization(ns,ttime,sstx,ssty,sstz,altitude,anglesGE,modelfilename,m
     yaxvgrid(j,:)=interp1(ttime,squeeze(anglesGE(2,j,:)),t);
     xaxvgrid(j,:)=interp1(ttime,squeeze(anglesGE(3,j,:)),t);
   end
+  footprintsize=zeros(size(t,2),1);
   if footprintyn
     for i=1:size(t,2)
       %for j=1:ns
@@ -443,8 +455,6 @@ function visualization(ns,ttime,sstx,ssty,sstz,altitude,anglesGE,modelfilename,m
       %footprintsize(i)=MAXY*1e2;%round(  MAXY/10^floor(log10(MAXY)) )  *  1e4;
       footprintsize(i)=(200000-10000)/2000*MAXY+10000;%round(  MAXY/10^floor(log10(MAXY)) )  *  1e4;
     end
-  else
-    footprintsize=zeros(size(t,2));
   end
   %% centerpoint
   Lat(1,:)     =  asin(sin(inclination).*sin(theta))/pi*180;              % Latitude             [deg]
@@ -1131,18 +1141,18 @@ function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satellite
   sstTemp=zeros(9,ns,size(timetemp,2));
 end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [sstDesired]=IRSRendezvousDesired(timetemptemp,ns,~)
+function [sstDesired]=IRSRendezvousDesired(timetemptemp,ns,~,i)
 %% desired IRS rendezvous solution
-  startSecondPhase=2*90*60;   %% [s]
-  sstDesired=zeros(9,ns,size(timetemptemp,2));
+  startSecondPhase=2*90*60;             %% [s]
+  sstDesired=zeros(9,1,size(timetemptemp,2));
 
   if timetemptemp<startSecondPhase
     sstDesired(1,1,:)=-930.46;          %% x for rendezvous
-    %sstDesired(2,2,1)=55.27;          %% y for rendezvous
-    %sstDesired(3,2,1)=82.5;           %% z for rendezvous
-    %sstDesired(4,2,1)=-0.04;          %% u for rendezvous
-    %sstDesired(5,2,1)=0.29;          %% v for rendezvous
-    %sstDesired(6,2,1)=-0.17;          %% w for rendezvous
+    %sstDesired(2,2,1)=55.27;           %% y for rendezvous
+    %sstDesired(3,2,1)=82.5;            %% z for rendezvous
+    %sstDesired(4,2,1)=-0.04;           %% u for rendezvous
+    %sstDesired(5,2,1)=0.29;            %% v for rendezvous
+    %sstDesired(6,2,1)=-0.17;           %% w for rendezvous
   else
     sstDesired(1,1,:)=0.1;
   end
@@ -1165,7 +1175,6 @@ function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satellite
   timetemp  =0:compStep:lengthControlLoop; %% duration and interpolation timestep for each control loop
   wakeAerodynamics=0;             %% use of wake aerodynamics
   masterSatellite=2;              %% if 0 no master, 1 active master, 2 passive master,
-
 
   sstDesiredFunction=@IvanovFormationFlightDesired;
   windOn=1;
@@ -1195,30 +1204,31 @@ function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satellite
   end
 end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [sstDesired]=IvanovFormationFlightDesired(timetemptemp,ns,MeanMotion)
+function [sstDesired]=IvanovFormationFlightDesired(timetemptemp,ns,MeanMotion,i)
 %% desired solution for Ivanov
-  sstDesired=zeros(9,ns,size(timetemptemp,2));
+  sstDesired=zeros(9,1,size(timetemptemp,2));
   %% analytical solution according to Ivanov
   AAA=100;    DDD=115;
-  %MeanMotion=MeanMotion/180*pi;
-  master=0;
-  sstDesired(1,1+master,:)=-DDD;
-  sstDesired(1,2+master,:)=DDD;
-
-  sstDesired(1,3+master,:)=2*AAA*        cos(MeanMotion*(timetemptemp)-acos(1/3));  
-  sstDesired(1,4+master,:)=2*AAA*        cos(MeanMotion*(timetemptemp));
-  sstDesired(2,3+master,:)=  AAA*sqrt(3)*sin(MeanMotion*(timetemptemp));
-  sstDesired(2,4+master,:)=  AAA*sqrt(3)*sin(MeanMotion*(timetemptemp)+acos(1/3));
-  sstDesired(3,3+master,:)=  AAA*        sin(MeanMotion*(timetemptemp)-acos(1/3));
-  sstDesired(3,4+master,:)=  AAA*        sin(MeanMotion*(timetemptemp));
-  
-  sstDesired(4,3+master,:)=2*AAA*       -sin(MeanMotion*(timetemptemp)-acos(1/3))*MeanMotion;  
-  sstDesired(4,4+master,:)=2*AAA*       -sin(MeanMotion*(timetemptemp))*MeanMotion;
-  sstDesired(5,3+master,:)=  AAA*sqrt(3)*cos(MeanMotion*(timetemptemp))*MeanMotion;
-  sstDesired(5,4+master,:)=  AAA*sqrt(3)*cos(MeanMotion*(timetemptemp)+acos(1/3))*MeanMotion;
-  sstDesired(6,3+master,:)=  AAA*        cos(MeanMotion*(timetemptemp)-acos(1/3))*MeanMotion;
-  sstDesired(6,4+master,:)=  AAA*        cos(MeanMotion*(timetemptemp))*MeanMotion;
-
+  switch i
+    case 1
+      sstDesired(1,1,:)=-DDD;
+    case 2
+      sstDesired(1,1,:)=DDD;
+    case 3
+      sstDesired(1,1,:)=2*AAA*        cos(MeanMotion*(timetemptemp)-acos(1/3));  
+      sstDesired(2,1,:)=  AAA*sqrt(3)*sin(MeanMotion*(timetemptemp));
+      sstDesired(3,1,:)=  AAA*        sin(MeanMotion*(timetemptemp)-acos(1/3));
+      sstDesired(4,1,:)=2*AAA*       -sin(MeanMotion*(timetemptemp)-acos(1/3))*MeanMotion;  
+      sstDesired(5,1,:)=  AAA*sqrt(3)*cos(MeanMotion*(timetemptemp))*MeanMotion;
+      sstDesired(6,1,:)=  AAA*        cos(MeanMotion*(timetemptemp)-acos(1/3))*MeanMotion;
+    case 4
+      sstDesired(1,1,:)=2*AAA*        cos(MeanMotion*(timetemptemp));
+      sstDesired(2,1,:)=  AAA*sqrt(3)*sin(MeanMotion*(timetemptemp)+acos(1/3));
+      sstDesired(3,1,:)=  AAA*        sin(MeanMotion*(timetemptemp));
+      sstDesired(4,1,:)=2*AAA*       -sin(MeanMotion*(timetemptemp))*MeanMotion;
+      sstDesired(5,1,:)=  AAA*sqrt(3)*cos(MeanMotion*(timetemptemp)+acos(1/3))*MeanMotion;
+      sstDesired(6,1,:)=  AAA*        cos(MeanMotion*(timetemptemp))*MeanMotion;
+  end
 end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1266,27 +1276,28 @@ function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satellite
   end
 end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [sstDesired]=cluxterDesired(timetemptemp,ns,MeanMotion)
+function [sstDesired]=cluxterDesired(timetemptemp,ns,MeanMotion,i)
 %% desired solution for Cluxter mission
-  sstDesired=zeros(9,ns,size(timetemptemp,2));
+  sstDesired=zeros(9,1,size(timetemptemp,2));
   %% analytical solution according to Ivanov
   if timetemptemp<100000*90*60
     AAA=7;    DDD=15;
   else
     AAA=14;    DDD=30;    
   end
-  sstDesired(1,1,:)=-DDD;
-
-  sstDesired(1,2,:)=2*AAA*        cos(MeanMotion*(timetemptemp)-acos(1/3)+pi/2);  
-  sstDesired(2,2,:)=  AAA*sqrt(3)*sin(MeanMotion*(timetemptemp)+pi/2);
-  sstDesired(3,2,:)=  AAA*        sin(MeanMotion*(timetemptemp)-acos(1/3)+pi/2);
-  
-  sstDesired(4,2,:)=2*AAA*       -sin(MeanMotion*(timetemptemp)-acos(1/3)+pi/2)*MeanMotion;  
-  sstDesired(5,2,:)=  AAA*sqrt(3)*cos(MeanMotion*(timetemptemp)+pi/2)*MeanMotion;
-  sstDesired(6,2,:)=  AAA*        cos(MeanMotion*(timetemptemp)-acos(1/3)+pi/2)*MeanMotion;
-
-  sstDesired(1,3,:)=DDD;
-
+  switch i
+    case 1
+      sstDesired(1,1,:)=-DDD;
+    case 2
+      sstDesired(1,1,:)=2*AAA*        cos(MeanMotion*(timetemptemp)-acos(1/3)+pi/2);  
+      sstDesired(2,1,:)=  AAA*sqrt(3)*sin(MeanMotion*(timetemptemp)+pi/2);
+      sstDesired(3,1,:)=  AAA*        sin(MeanMotion*(timetemptemp)-acos(1/3)+pi/2);
+      sstDesired(4,1,:)=2*AAA*       -sin(MeanMotion*(timetemptemp)-acos(1/3)+pi/2)*MeanMotion;  
+      sstDesired(5,1,:)=  AAA*sqrt(3)*cos(MeanMotion*(timetemptemp)+pi/2)*MeanMotion;
+      sstDesired(6,1,:)=  AAA*        cos(MeanMotion*(timetemptemp)-acos(1/3)+pi/2)*MeanMotion;
+    case 3
+      sstDesired(1,1,:)=DDD;
+  end
 end
 
 
