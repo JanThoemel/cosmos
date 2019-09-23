@@ -90,10 +90,21 @@ flops         =0;
 firstTime     =1;
 currentTime   =0;           %% now, should usually be 0
 %figure
+
+%NS=parpool(ns);
+%DQ = parallel.pool.DataQueue;
+%afterEach(DQ,@disp);
+%spmd
+  %labindex replaces i
+  % in functions use switch for i/labindex
+  %when ISL then use labSend/labReceive
+%end
+%delete(mypool)
+
 while currentTime<totalTime
   %% Desired state vector
   for i=1:ns
-    [sstDesiredtemp(:,i,:)]=sstDesiredFunction(currentTime+timetemp,ns,MeanMotion,i);
+    [sstDesiredtemp(:,i,:)]=sstDesiredFunction(currentTime+timetemp,MeanMotion,i);
   end
   %% apply disturbances
   %! disturbances
@@ -102,17 +113,19 @@ while currentTime<totalTime
   for j=1:size(timetemp,2)-1
     for i=1:ns
       %% compute error
-      etemp(:,i,j)=sstTemp(1:6,i,j)-sstDesiredtemp(1:6,i,j);  %% ISL
+      etemp(:,i,j)=sstTemp(1:6,i,j)-sstDesiredtemp(1:6,i,j);  
       %fprintf('\ne %e %e %e %e %e %e',etemp(1,i,j),etemp(2,i,j),etemp(3,i,j),etemp(4,i,j),etemp(5,i,j),etemp(6,i,j));
     end
     
     if not(masterSatellite) %% if there is no master satellite, the error will be distributed and x will be shifted    
       averageError=zeros(6,1);
+      %% ISL etemp
       for i=1:ns
         %% compute average error      
         averageError(:)=averageError(:)+etemp(:,i,j)/ns;
         flops=flops+6;
       end
+      %% ISL averageError
       for i=1:ns
         %% assign average error, shift x
         etemp(2:6,i,j)=etemp(2:6,i,j)-averageError(2:6);
@@ -133,7 +146,8 @@ while currentTime<totalTime
     
     %% if there is no mastersatellite the coordinate system, based at sat1 will be shifted
     if not(masterSatellite) 
-      refPosChangeTemp(:,j+1)=sstTemp(1:3,1,j+1)-sstTemp(1:3,1,j); %% ISL
+      refPosChangeTemp(:,j+1)=sstTemp(1:3,1,j+1)-sstTemp(1:3,1,j); 
+      %% ISL refPosChangeTemp(:,j+1)
       for i=1:ns %% move coordinate system
         sstTemp(1:3,i,j+1)=sstTemp(1:3,i,j+1)-refPosChangeTemp(:,j+1);
         flops=flops+6;
@@ -153,20 +167,20 @@ while currentTime<totalTime
     end
   end  %% end of control loop
 
-  if firstTime==1
-    %% set sst for initial step right because only further steps are computed
-    sst(:,:,1)    =sstTemp(:,:,1);
-    firstTime=0;
+  if firstTime==1 %% set sst for initial step right because only further steps are computed
+    sst(:,:,1)  =sstTemp(:,:,1);
+    firstTime   =0;
   end    
+  
   sstTemp(:,:,1)=sstTemp(:,:,end);
  
   fprintf('\n');
   %% append data of last control loop to global data vector
-  sst     =cat(3,sst,sstTemp(:,:,2:end));  
-  u       =cat(3,u,utemp(:,:,2:end));   
-  e       =cat(3,e,etemp(:,:,1:end-1));
+  sst         =cat(3,sst,sstTemp(:,:,2:end));  
+  u           =cat(3,u,utemp(:,:,2:end));   
   refPosChange=cat(2,refPosChange,refPosChangeTemp(:,2:end));
-  time    =[time ; currentTime+timetemp(2:end)'];  
+  e           =cat(3,e,etemp(:,:,1:end-1));
+  time        =[time ; currentTime+timetemp(2:end)'];  
   %% print progress of iterations to screen
   %fprintf('\n flops %d',flops);
   if currentTime>0
@@ -1141,7 +1155,7 @@ function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satellite
   sstTemp=zeros(9,ns,size(timetemp,2));
 end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [sstDesired]=IRSRendezvousDesired(timetemptemp,ns,~,i)
+function [sstDesired]=IRSRendezvousDesired(timetemptemp,~,i)
 %% desired IRS rendezvous solution
   startSecondPhase=2*90*60;             %% [s]
   sstDesired=zeros(9,1,size(timetemptemp,2));
@@ -1204,7 +1218,7 @@ function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satellite
   end
 end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [sstDesired]=IvanovFormationFlightDesired(timetemptemp,ns,MeanMotion,i)
+function [sstDesired]=IvanovFormationFlightDesired(timetemptemp,MeanMotion,i)
 %% desired solution for Ivanov
   sstDesired=zeros(9,1,size(timetemptemp,2));
   %% analytical solution according to Ivanov
@@ -1276,7 +1290,7 @@ function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satellite
   end
 end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [sstDesired]=cluxterDesired(timetemptemp,ns,MeanMotion,i)
+function [sstDesired]=cluxterDesired(timetemptemp,MeanMotion,i)
 %% desired solution for Cluxter mission
   sstDesired=zeros(9,1,size(timetemptemp,2));
   %% analytical solution according to Ivanov
