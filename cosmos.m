@@ -109,14 +109,12 @@ while currentTime<totalTime
   %! disturbances
   
   for j=1:size(timetemp,2)-1 %% control loop within ODE solver loop
-
     for i=1:ns %% compute error
-      etemp(:,i,j)=sstTemp(1:6,i,j)-sstDesiredtemp(1:6,i,j);  
+      etemp(1:6,i,j)=sstTemp(1:6,i,j)-sstDesiredtemp(1:6,i,j);
     end   
     if not(masterSatellite) %% if there is no master satellite, the error will be distributed and x will be shifted    
-      averageError=zeros(6,1);
       %% ISL etemp
-      %! 
+      %!
       for i=1:ns %% compute average error
         averageError(:)=averageError(:)+etemp(:,i,j)/ns;
       end
@@ -128,7 +126,7 @@ while currentTime<totalTime
       end
     end  
     
-    for i=1:ns %% solve ODE for each satellite 
+    for i=1:ns %% solve ODE for each satellite
       [sstTemp(:,i,j+1),utemp(:,i,j+1)]=HCWEquation(...
         IR,P,A,B,timetemp(j+1)-timetemp(j),sstTemp(:,i,j),etemp(:,i,j),...
         sqrt(wind(1)^2+wind(2)^2+wind(3)^2),sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2),...
@@ -139,8 +137,9 @@ while currentTime<totalTime
     
     %% if there is no mastersatellite, the coordinate system based at sat1 will be shifted
     if not(masterSatellite) 
-      refPosChangeTemp(:,j+1)=sstTemp(1:3,1,j+1)-sstTemp(1:3,1,j); 
+      refPosChangeTemp(:,j+1)=sstTemp(1:3,1,j+1)-sstTemp(1:3,1,j);
       %% ISL refPosChangeTemp(:,j+1)
+      %!
       for i=1:ns %% move coordinate system
         sstTemp(1:3,i,j+1)=sstTemp(1:3,i,j+1)-refPosChangeTemp(:,j+1);
       end
