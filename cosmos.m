@@ -86,7 +86,6 @@ refPosChangeTemp  =zeros(3,size(timetemp,2));
 sst(:,:,1)    =sstTemp(:,:,1);
 
 %% solving the ODE in chunks per each control period
-flops         =0;
 firstTime     =1;
 currentTime   =0;           %% now, should usually be 0
 %figure
@@ -104,53 +103,46 @@ currentTime   =0;           %% now, should usually be 0
 while currentTime<totalTime
   %% Desired state vector
   for i=1:ns
-    [sstDesiredtemp(:,i,:)]=sstDesiredFunction(currentTime+timetemp,MeanMotion,i);
+    sstDesiredtemp(:,i,:)=sstDesiredFunction(currentTime+timetemp,MeanMotion,i);
   end
   %% apply disturbances
   %! disturbances
   
-  %% control loop within ODE solver loop
-  for j=1:size(timetemp,2)-1
-    for i=1:ns
-      %% compute error
+  for j=1:size(timetemp,2)-1 %% control loop within ODE solver loop
+
+    for i=1:ns %% compute error
       etemp(:,i,j)=sstTemp(1:6,i,j)-sstDesiredtemp(1:6,i,j);  
-      %fprintf('\ne %e %e %e %e %e %e',etemp(1,i,j),etemp(2,i,j),etemp(3,i,j),etemp(4,i,j),etemp(5,i,j),etemp(6,i,j));
-    end
-    
+    end   
     if not(masterSatellite) %% if there is no master satellite, the error will be distributed and x will be shifted    
       averageError=zeros(6,1);
       %% ISL etemp
-      for i=1:ns
-        %% compute average error      
+      %! 
+      for i=1:ns %% compute average error
         averageError(:)=averageError(:)+etemp(:,i,j)/ns;
-        flops=flops+6;
       end
       %% ISL averageError
-      for i=1:ns
-        %% assign average error, shift x
+      %! 
+      for i=1:ns %% assign average error, shift x
         etemp(2:6,i,j)=etemp(2:6,i,j)-averageError(2:6);
         etemp(1,i,j)=etemp(1,i,j)-max(etemp(1,:,j));
-        flops=flops+6;
       end
     end  
-   
-    %% solve ODE for each satellite 
-    for i=1:ns 
-      [sstTemp(:,i,j+1),utemp(:,i,j+1),flops]=hcwequation2(...
-        IR,P,A,B,timetemp(j+1)-timetemp(j),sstTemp(:,i,j),etemp(:,i,j),flops,...
+    
+    for i=1:ns %% solve ODE for each satellite 
+      [sstTemp(:,i,j+1),utemp(:,i,j+1)]=HCWEquation(...
+        IR,P,A,B,timetemp(j+1)-timetemp(j),sstTemp(:,i,j),etemp(:,i,j),...
         sqrt(wind(1)^2+wind(2)^2+wind(3)^2),sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2),...
         alphas,betas,gammas,aeropressureforcevector,solarpressureforcevector,sstTemp(7,i,j),...
         sstTemp(8,i,j),sstTemp(9,i,j),refSurf,satelliteMass,wakeAerodynamics,masterSatellite,...
         currentTime+timetemp(j),radiusOfEarth,altitude,MeanMotion);
     end
     
-    %% if there is no mastersatellite the coordinate system, based at sat1 will be shifted
+    %% if there is no mastersatellite, the coordinate system based at sat1 will be shifted
     if not(masterSatellite) 
       refPosChangeTemp(:,j+1)=sstTemp(1:3,1,j+1)-sstTemp(1:3,1,j); 
       %% ISL refPosChangeTemp(:,j+1)
       for i=1:ns %% move coordinate system
         sstTemp(1:3,i,j+1)=sstTemp(1:3,i,j+1)-refPosChangeTemp(:,j+1);
-        flops=flops+6;
       end
     end
         
@@ -182,7 +174,6 @@ while currentTime<totalTime
   e           =cat(3,e,etemp(:,:,1:end-1));
   time        =[time ; currentTime+timetemp(2:end)'];  
   %% print progress of iterations to screen
-  %fprintf('\n flops %d',flops);
   if currentTime>0
     fprintf('\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b')
   end
@@ -204,7 +195,7 @@ while currentTime<totalTime
   xlabel('X [m]');ylabel('Y [m]');zlabel('Z [m]');legend(names);grid on;hold off;axis equal;
   pause(0.001)
   %}
-end
+end %% global while/time loop
 
 hold off;
 
@@ -257,17 +248,16 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,flops,windPressure,...
+function [ssttemptemp,controlVector]=HCWEquation(IR,P,A,B,deltat,sst0,e,windPressure,...
           solarPressure,alphas,betas,gammas,aeropressureforcevector,solarpressureforcevector,...
           oldAlphaOpt,oldBetaOpt,oldGammaOpt,refSurf,satelliteMass,wakeAerodynamics,masterSatellite...
           ,currentTime0,radiusOfEarth,altitude,MeanMotion)
-%hcwequation2 Hill-Clohessy-Wiltshire equation
+%HCWequation Hill-Clohessy-Wiltshire equation
   usedTotalForceVector=zeros(3,size(alphas,2),size(betas,2),size(gammas,2));
   rotatedSunForceVector=zeros(3,size(alphas,2),size(betas,2),size(gammas,2));
 
   %% compute control vector
   controlVector=-IR*B'*P*e;
-  flops=flops+size(IR,1)*(size(IR,1)-1)*size(IR,2)+0+0; 
   solarForceVectorOfMaster=[0 0 0]';
   maxSolarForce=[0 0 0]';
   
@@ -339,7 +329,6 @@ function [ssttemptemp,controlVector,flops]=hcwequation2(IR,P,A,B,deltat,sst0,e,f
   %% solve ODE with backward Euler step
   ssttemptemp(1:6)=(A*sst0(1:6)+B*forceVector/satelliteMass)*deltat+sst0(1:6);
   ssttemptemp(7:9)=[alphaOpt betaOpt gammaOpt]';
-  flops=flops+1e6; 
   
 end
 
