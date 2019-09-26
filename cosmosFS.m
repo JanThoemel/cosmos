@@ -1,15 +1,22 @@
 %% cosmosFS - Flight Simulator
-%% 22/9/2019
+%% emulates 
+%%    -realtime code execution through timed execution and pause
+%%    -execution on different satellites through parallel programming
+
+
+%% to do
+%% -use of Matlab timer function, maybe
+
+%% Revision history:
+%% 26/09/2019:  cycle works, computational algorithm incomplete
 
 
 clc;clear all;
 ns=3;       %% number of satellite
+
 DQ = parallel.pool.DataQueue;
 afterEach(DQ,@disp);
-accelerationFactor=1000;
 parpool(3);
-orbitSection=1;         %degree
-orbitSections=[1:orbitSection:360];
 
 %for i=ns+1:ns+ns
 %  switch labindex
@@ -21,11 +28,22 @@ orbitSections=[1:orbitSection:360];
 %end
 
 startTime=posixtime(datetime('now')); %% posixtime, i.e. seconds
+accelerationFactor=1000;
 maxOrbits=16;
+
+%% data that will later be per satellite and therefore inside SPMD loop
+orbitSection=1;         %degree
+orbitSections=[1:orbitSection:360];
+masterSatellite=0;
+orbitCounter=0;  
+etemp=zeros(6,1);
+sst=zeros(6,1);
+sstDesired=zeros(6,1);
+sstOld=zeros(6,1);
+refPosChangeTemp=zeros(3,1);
 
 spmd(3) %% create satellite instances
   send(DQ,strcat('No. ',num2str(labindex),' is alive.'))
-  orbitCounter=0;  
   go=getMode(maxOrbits,orbitCounter,DQ);
   
   while go==1  
@@ -42,21 +60,23 @@ spmd(3) %% create satellite instances
     pause((orbitSections(idx)-meanAnomalyFromAN)/meanMotion);
     
     while go==1 && idx<=size(orbitSections,2) %% orbit sections loop
-      start=now;
+      start=now; %% determine cycle start time in order allow to substract cycle duration from waiting
       %% set attitude computed in last iteration
       setAttitude();
       %% compute attitude for next section
-      etemp(1:6)=sstTemp(1:6)-sstDesiredtemp(1:6);
+      %% determine desired trajctory
+      %sstDesired=sstDesiredFunction(meanAnomaly,MeanMotion);
+      etemp(1:6)=sst(1:6)-sstDesired(1:6);
       if not(masterSatellite)
-        %!ISL error
+        %! ISL error
         %! compute average error
         %! ISL averageerror
         %! assign average error, i.e. compute final error
       end
       computeAttitude();
       if not(masterSatellite)
-        if labindex=1
-          refPosChangeTemp(1:3)=sstTemp(1:3)-sstTempOld(1:3);
+        if labindex==1
+          refPosChangeTemp(1:3)=sst(1:3)-sstOld(1:3);
         end
         %! move coordinate system
       end
@@ -76,10 +96,10 @@ end
 delete(gcp)
 
 function setAttitude()
-  executiontime=0.1;
+  pause(0.001);
 end
 function computeAttitude()
-  executiontime=0.1;
+  pause(0.001);
 end
 
 function [meanMotion,meanAnomalyFromAN]=WhereInWhatOrbit(accelerationFactor)
