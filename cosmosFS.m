@@ -2,25 +2,6 @@
 %% 22/9/2019
 
 
-%%One week until the European CubeSat Symposium 2019.
-%%The von Karman Institute for Fluid Dynamics and the University of Luxembourg,
-%%the key note speakers, the jury of the Space Business Pitch, and the sponsors and
-%%exhibitors welcome you - the presenters, pitchers and participants - here in Luxembourg
-%%to discuss the #futureofcubesats.
-%%(cubesatsymposium.eu)
-
-%% One week after the European CubeSat Sympsosium 2019.
-%% We have seen concrete advances and audaciously ambitious deepspace missions.
-%% The von Karman Institute for Fluid Dynamics and the University of Luxembourg
-%% presenters, pitchers and participants to joining the discussion.
-%% We hope that you will come back here in Luxembourg soon and at the
-%% 12th edition of the event next year in Paris.
-%%(cubesatsymposium.eu)
-
-%% On a personal note, I thank the Space Business Pitch members @ @ @ and among them those
-%% from the private sector @@ who have spent their precious time and experience volunteering
-%% for the good cause.
-
 clc;clear all;
 ns=3;       %% number of satellite
 DQ = parallel.pool.DataQueue;
@@ -50,36 +31,56 @@ spmd(3) %% create satellite instances
   while go==1  
     orbitCounter=orbitCounter+1;
     send(DQ,strcat(num2str(labindex),': ------ no of orbit: ',num2str(orbitCounter)));
-    startorbit=posixtime(datetime('now')); %% posixtime, i.e. seconds
-    send(DQ,strcat(num2str(labindex),': orbittimer begin: ',num2str(posixtime(datetime('now'))-startTime)));
+    startOrbit=now; %% posixtime, i.e. seconds
+    %send(DQ,strcat(num2str(labindex),': orbittimer begin: ',num2str(posixtime(datetime('now'))-startTime)));
 
     [meanMotion,meanAnomalyFromAN]=WhereInWhatOrbit(accelerationFactor);   
     
     %% wait until end of orbit section
     idx = find(orbitSections >= meanAnomalyFromAN,1,'first');
-    pause((orbitSections(idx)-meanAnomalyFromAN)/meanMotion);
     idx=idx+1;
+    pause((orbitSections(idx)-meanAnomalyFromAN)/meanMotion);
     
     while go==1 && idx<=size(orbitSections,2) %% orbit sections loop
+      start=now;
+      %% set attitude computed in last iteration
+      setAttitude();
       %% compute attitude for next section
-      nextattitude=5;
-      %% wait until next section starts
-      pause(orbitSection/meanMotion);
-      %% set new attitude
-      setnextattitude=5;
-      
+      etemp(1:6)=sstTemp(1:6)-sstDesiredtemp(1:6);
+      if not(masterSatellite)
+        %!ISL error
+        %! compute average error
+        %! ISL averageerror
+        %! assign average error, i.e. compute final error
+      end
+      computeAttitude();
+      if not(masterSatellite)
+        if labindex=1
+          refPosChangeTemp(1:3)=sstTemp(1:3)-sstTempOld(1:3);
+        end
+        %! move coordinate system
+      end
       %% set counter and go condition
       idx=idx+1;
       go=getMode(maxOrbits,orbitCounter,DQ);      
+      %% wait until next section starts
+      pause(orbitSection/meanMotion-(now-start));
     end %% orbit sections while loop
     
-    send(DQ,strcat(num2str(labindex),': orbittimer end: ',num2str(posixtime(datetime('now'))-startTime)));  
+    %send(DQ,strcat(num2str(labindex),': orbittimer end: ',num2str(posixtime(datetime('now'))-startTime)));  
+    send(DQ,strcat(num2str(labindex),': duration of orbit: ',num2str(now-startOrbit)));  
   end %% orbit while loop
   
   send(DQ,strcat('No.',num2str(labindex),' is dead.'))
 end
 delete(gcp)
 
+function setAttitude()
+  executiontime=0.1;
+end
+function computeAttitude()
+  executiontime=0.1;
+end
 
 function [meanMotion,meanAnomalyFromAN]=WhereInWhatOrbit(accelerationFactor)
 %% this function usually provides a meanAnomalyFromAN=0 and the related meanMotion for a circular orbit
@@ -112,9 +113,6 @@ end
 function go=setMode(startTime,endTime,DQ)
   go=1;
 end
-
-
-
 
 function satellite(ns,i,DQ)
 %timeline=0:1:100; 
