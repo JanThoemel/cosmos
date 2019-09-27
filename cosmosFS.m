@@ -1,6 +1,6 @@
 %% cosmosFS - Flight Simulator
 %% emulates 
-%%    -realtime code execution through timed execution and pause
+%%    -realtime code execution through timed execution and pauses
 %%    -execution on different satellites through parallel programming
 
 
@@ -10,36 +10,36 @@
 %% Revision history:
 %% 26/09/2019:  cycle works, computational algorithm incomplete
 
-
 clc;clear all;
-ns=3;       %% number of satellite
+%ns=3;       %% number of satellite
 
 DQ = parallel.pool.DataQueue;
 afterEach(DQ,@disp);
 parpool(3);
 
-%for i=ns+1:ns+ns
-%  switch labindex
-%    case
-%    case
-%    case
-%  end
-%  parfeval(@setMode,1,start,endTime,DQ)
-%end
+%% symbolic names of initial conditions and desired statevector functions
+%sstInitialFunction=@IRSRendezvousInitial;
+sstInitialFunction=@IvanovFormationFlightInitial;
+%sstInitialFunction=@cluxterInitial;
+
+%% actual initial conditions of ODE, altitude is not used here therefore the ~
+[sstTemp,ns,~,panels,rho,v,radiusOfEarth,MeanMotion,mu,satelliteMass,panelSurface,...
+  sstDesiredFunction,windOn,sunOn,deltaAngle,timetemp,totalTime,wakeAerodynamics,masterSatellite]=sstInitialFunction(); 
+
 
 startTime=posixtime(datetime('now')); %% posixtime, i.e. seconds
 accelerationFactor=1000;
 maxOrbits=16;
 
 %% data that will later be per satellite and therefore inside SPMD loop
-orbitSection=1;         %degree
-orbitSections=[1:orbitSection:360];
-masterSatellite=0;
-orbitCounter=0;  
-etemp=zeros(6,1);
-sst=zeros(6,1);
-sstDesired=zeros(6,1);
-sstOld=zeros(6,1);
+orbitSection    =1;         %degree
+orbitSections   =[1:orbitSection:360];
+%masterSatellite =0;
+orbitCounter    =0;  
+etemp           =zeros(6,1);
+sst             =zeros(6,1);
+sstDesired      =zeros(6,1);
+sstOld          =zeros(6,1);
 refPosChangeTemp=zeros(3,1);
 
 spmd(3) %% create satellite instances
@@ -52,7 +52,7 @@ spmd(3) %% create satellite instances
     startOrbit=now; %% posixtime, i.e. seconds
     %send(DQ,strcat(num2str(labindex),': orbittimer begin: ',num2str(posixtime(datetime('now'))-startTime)));
 
-    [meanMotion,meanAnomalyFromAN]=WhereInWhatOrbit(accelerationFactor);   
+    [meanMotion,meanAnomalyFromAN]=WhereInWhatOrbit(accelerationFactor);
     
     %% wait until end of orbit section
     idx = find(orbitSections >= meanAnomalyFromAN,1,'first');
@@ -60,12 +60,12 @@ spmd(3) %% create satellite instances
     pause((orbitSections(idx)-meanAnomalyFromAN)/meanMotion);
     
     while go==1 && idx<=size(orbitSections,2) %% orbit sections loop
-      start=now; %% determine cycle start time in order allow to substract cycle duration from waiting
+      start=now; %% determine cycle start time in order allow to subtract cycle duration from waiting
       %% set attitude computed in last iteration
       setAttitude();
       %% compute attitude for next section
       %% determine desired trajctory
-      %sstDesired=sstDesiredFunction(meanAnomaly,MeanMotion);
+      %sstDesired=sstDesiredFunction(meanAnomalyFromAN/MeanMotion,MeanMotion);
       etemp(1:6)=sst(1:6)-sstDesired(1:6);
       if not(masterSatellite)
         %! ISL error
