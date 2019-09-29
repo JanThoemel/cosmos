@@ -1,26 +1,26 @@
-function [sstDesired]=IvanovFormationFlightDesired(timetemptemp,MeanMotion,i)
+function [sstDesired]=IvanovFormationFlightDesired(time,meanMotion,i)
 %% desired solution for Ivanov
-  sstDesired=zeros(9,1,size(timetemptemp,2));
+  sstDesired=zeros(9,1,size(time,2));
   %% analytical solution according to Ivanov
-  AAA=100;    DDD=115;
+  A=100;    D=115;
   switch i
     case 1
-      sstDesired(1,1,:)=-DDD;
+      sstDesired(1,1,:)=-D;
     case 2
-      sstDesired(1,1,:)=DDD;
+      sstDesired(1,1,:)=D;
     case 3
-      sstDesired(1,1,:)=2*AAA*        cos(MeanMotion*(timetemptemp)-acos(1/3));  
-      sstDesired(2,1,:)=  AAA*sqrt(3)*sin(MeanMotion*(timetemptemp));
-      sstDesired(3,1,:)=  AAA*        sin(MeanMotion*(timetemptemp)-acos(1/3));
-      sstDesired(4,1,:)=2*AAA*       -sin(MeanMotion*(timetemptemp)-acos(1/3))*MeanMotion;  
-      sstDesired(5,1,:)=  AAA*sqrt(3)*cos(MeanMotion*(timetemptemp))*MeanMotion;
-      sstDesired(6,1,:)=  AAA*        cos(MeanMotion*(timetemptemp)-acos(1/3))*MeanMotion;
+      sstDesired(1,1,:)=2*A*        cos(meanMotion*(time)-acos(1/3));  
+      sstDesired(2,1,:)=  A*sqrt(3)*sin(meanMotion*(time));
+      sstDesired(3,1,:)=  A*        sin(meanMotion*(time)-acos(1/3));
+      sstDesired(4,1,:)=2*A*       -sin(meanMotion*(time)-acos(1/3))*meanMotion;  
+      sstDesired(5,1,:)=  A*sqrt(3)*cos(meanMotion*(time))*meanMotion;
+      sstDesired(6,1,:)=  A*        cos(meanMotion*(time)-acos(1/3))*meanMotion;
     case 4
-      sstDesired(1,1,:)=2*AAA*        cos(MeanMotion*(timetemptemp));
-      sstDesired(2,1,:)=  AAA*sqrt(3)*sin(MeanMotion*(timetemptemp)+acos(1/3));
-      sstDesired(3,1,:)=  AAA*        sin(MeanMotion*(timetemptemp));
-      sstDesired(4,1,:)=2*AAA*       -sin(MeanMotion*(timetemptemp))*MeanMotion;
-      sstDesired(5,1,:)=  AAA*sqrt(3)*cos(MeanMotion*(timetemptemp)+acos(1/3))*MeanMotion;
-      sstDesired(6,1,:)=  AAA*        cos(MeanMotion*(timetemptemp))*MeanMotion;
+      sstDesired(1,1,:)=2*A*        cos(meanMotion*(time));
+      sstDesired(2,1,:)=  A*sqrt(3)*sin(meanMotion*(time)+acos(1/3));
+      sstDesired(3,1,:)=  A*        sin(meanMotion*(time));
+      sstDesired(4,1,:)=2*A*       -sin(meanMotion*(time))*meanMotion;
+      sstDesired(5,1,:)=  A*sqrt(3)*cos(meanMotion*(time)+acos(1/3))*meanMotion;
+      sstDesired(6,1,:)=  A*        cos(meanMotion*(time))*meanMotion;
   end
 end

@@ -1,4 +1,4 @@
-function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satelliteMass,panelSurface,...
+function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,meanMotion,mu,satelliteMass,panelSurface,...
           sstDesiredFunction,windOn,sunOn,deltaAngle,timetemp,totalTime,wakeAerodynamics,masterSatellite]...
           =IvanovFormationFlightInitial()
 %% initial conditions for Ivanov
@@ -25,7 +25,7 @@ function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,MeanMotion,mu,satellite
   panelSurface=0.01;              %% m^2  
 
   %% other constants
-  [rho,v,radiusOfEarth,mu,MeanMotion]=orbitalproperties(altitude);
+  [rho,v,radiusOfEarth,mu,meanMotion]=orbitalproperties(altitude);
   r0=radiusOfEarth+altitude;    %% in m
   panels=[0 0 2]; 
   sstTemp=zeros(9,ns,size(timetemp,2));
