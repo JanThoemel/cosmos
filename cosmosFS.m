@@ -10,6 +10,7 @@
 %% -elliptical orbit
 %% -start further workers to emulate OBC, GPS for mode switching
 %% -HIL
+%% -clarify what data of the header goes to each satellite
 
 %% Revision history:
 %% 26/09/2019:  cycle works, computational algorithm incomplete
@@ -32,14 +33,14 @@ parpool(ns);
 
 startTime=posixtime(datetime('now')); %% posixtime, i.e. seconds
 accelerationFactor=10000;
-maxOrbits=50;
+maxOrbits=30;
 
 %% initial idx and altitude
 idx=120;
 altitude=340000;  
 
 %% data that will later be per satellite and therefore inside SPMD loop
-orbitSection    =0.5;         %degree
+orbitSection    =2;         %degree
 orbitSections   =[1:orbitSection:360];
 orbitCounter    =0;  
 etemp           =zeros(6,1);
@@ -66,7 +67,7 @@ solarpressureforcevector =solarpressureforcevectorfunction(sunlight,panelSurface
                                                           panels(2),panels(3),alphas,betas,gammas);
 
 spmd(ns) %% create satellite instances
-%%   this is code for each satellite
+%%   this is code for each satellite, some of the code of above will come down here
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
   alive=1;
@@ -80,7 +81,7 @@ spmd(ns) %% create satellite instances
     sstPP   =sst;
     timePP  =0;
     
-    while goFoFli==1  %% orbit loop
+    while (goFoFli==1 || goFoFli==2)  %% orbit loop
       orbitCounter=orbitCounter+1;
       send(DQ,strcat(num2str(labindex),': ------ no of orbit: ',num2str(orbitCounter)));
       startOrbit=now; %% posixtime, i.e. seconds
@@ -96,16 +97,16 @@ spmd(ns) %% create satellite instances
       %% wait until end of orbit section
       idx = find(orbitSections >= meanAnomalyFromAN,1,'first');
       idx=idx+1;
-      %switch off GPS
+
       pause((orbitSections(idx)-meanAnomalyFromAN)/meanMotion/accelerationFactor);
 
-      while goFoFli==1 && idx<=size(orbitSections,2) %% orbit sections loop
+      while (goFoFli==1 || goFoFli==2) && idx<=size(orbitSections,2) %% orbit sections loop
         startSection=now; %% determine cycle start time in order allow to subtract cycle duration from waiting
         %% set attitude computed in last iteration
         setAttitude();
         %% compute attitude for next section
         %% determine desired trajectory
-        sstDesired=sstDesiredFunction(orbitSections(idx)/meanMotion,meanMotion/180*pi,labindex);
+        sstDesired=sstDesiredFunction(orbitSections(idx)/meanMotion,meanMotion/180*pi,labindex,goFoFli);
         %% determine error
         etemp(1:6)=sst(1:6)-sstDesired(1:6);
         if not(masterSatellite)
@@ -123,7 +124,7 @@ spmd(ns) %% create satellite instances
           sstOld(8),sstOld(9),refSurf,satelliteMass,wakeAerodynamics,masterSatellite,...
           orbitSections(idx)/meanMotion,radiusOfEarth,altitude,meanMotion/180*pi);
         sst=sst';
-        timePP=[timePP timePP(end)+orbitSection/meanMotion];
+        timePP=[timePP timePP(end)+orbitSection/meanMotion];  %% for plotting
         if not(masterSatellite)
           if labindex==1
             refPosChangeTemp(1:3)=sst(1:3)-sstOld(1:3);
@@ -135,11 +136,11 @@ spmd(ns) %% create satellite instances
         [goFoFli,batteryOK]=getMode(maxOrbits,orbitCounter,DQ);      
         %% wait until next section starts
         %send(DQ,strcat(num2str(labindex),': time4section',num2str(orbitSection/meanMotion),' now-start ',num2str(now-start)));
-        if idx>3/4*size(orbitSections,2) && batteryOK
-          %switch on GPS
+        if idx>3/4*size(orbitSections,2) && batteryOK %% orbit determination will be switch on when in sun light and battery is ok
+          orbitDetermination();
         end
         pause(orbitSection/meanMotion/accelerationFactor-(now-startSection));
-        sstPP=[sstPP sst];
+        sstPP=[sstPP sst]; %% for plotting
       end %% orbit sections while loop
 
       %send(DQ,strcat(num2str(labindex),': orbittimer end: ',num2str(posixtime(datetime('now'))-startTime)));  
@@ -173,9 +174,6 @@ delete(gcp)
 function setAttitude()
   pause(0.001);
 end
-function computeAttitude()
-  pause(0.001);
-end
 
 function [meanMotion,meanAnomalyFromAN,altitude,sst]=whereInWhatOrbit(sst,altitude,endOfSectionsCycle)
 %% this function usually provides a meanAnomalyFromAN=0 and the related meanMotion for a circular orbit
@@ -199,6 +197,24 @@ function [meanMotion,meanAnomalyFromAN,altitude,sst]=whereInWhatOrbit(sst,altitu
   meanMotion=meanMotion/pi*180;
 end
 
+
+function orbitDetermination()
+%% switches orbit determination based on GPS or TLE on
+%% this function needs to run in parallel to the main thread and must provide trajectory to getGNSSOrTLEdata()
+%% how the heck does this work?
+  GPSMethod=1;
+  if GPSMethod==1
+    ;
+    %switchGPS(1);
+    %getGPSData();
+    %computeTrajectoryGPS();
+  else
+    ;
+    %getTLE();
+    %computeTrajectoryTLE();
+  end
+end
+
 function [GPSTLEdataAvailable,altitudeGPSTLE,meanAnomalyFromANGPSTLE,time]=getGNSSOrTLEdata()
 %% compute meanAnomalyFromANGPS,altitudeGPS at now from available past GPS or TLE/SGP4 data
   GPSTLEdataAvailable=0;
@@ -207,18 +223,22 @@ function [GPSTLEdataAvailable,altitudeGPSTLE,meanAnomalyFromANGPSTLE,time]=getGN
   time=1;
 end
 
-function [goFo,batteryOK]=getMode(maxOrbits,orbitCounter,DQ)
-  goFo=1;
+function [goFoFli,batteryOK]=getMode(maxOrbits,orbitCounter,DQ)
+  goFoFli=1;
   %% readfile
-  readModeFromFile=1;
+  readModeFromFile=10; %% default: go to alive loop/mode
   if orbitCounter>=maxOrbits
     send(DQ,strcat(num2str(labindex),'leaving loop - maximum number of orbits reached'))
-    goFo=10;
+    goFoFli=10;
   elseif readModeFromFile==0
     send(DQ,strcat(num2str(labindex),'leaving loop - filestop'))
-    goFo=20;
+    goFoFli=20;
   else
-    goFo=1;
+    if orbitCounter<15
+      goFoFli=1;
+    else
+      goFoFli=2;
+    end
   end
   batteryOK=1;
 end

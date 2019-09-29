@@ -1,8 +1,14 @@
-function [sstDesired]=IvanovFormationFlightDesired(time,meanMotion,i)
+function [sstDesired]=IvanovFormationFlightDesired(time,meanMotion,i,mode)
 %% desired solution for Ivanov
   sstDesired=zeros(9,1,size(time,2));
   %% analytical solution according to Ivanov
-  A=100;    D=115;
+  switch mode
+    case 1
+      A=100;    D=115;
+    case 2
+      factor=2;
+      A=factor*100;    D=factor*115;
+  end
   switch i
     case 1
       sstDesired(1,1,:)=-D;

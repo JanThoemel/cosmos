@@ -102,7 +102,7 @@ currentTime   =0;           %% now, should usually be 0
 while currentTime<totalTime
   %% Desired state vector
   for i=1:ns
-    sstDesiredtemp(:,i,:)=sstDesiredFunction(currentTime+timetemp,meanMotion,i);
+    sstDesiredtemp(:,i,:)=sstDesiredFunction(currentTime+timetemp,meanMotion,i,1);
   end
   %% apply disturbances
   %! disturbances
