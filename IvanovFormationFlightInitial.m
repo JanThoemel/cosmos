@@ -8,7 +8,7 @@ function [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,meanMotion,mu,satellite
   lengthControlLoop =90;         %% in [s]
   timetemp  =0:compStep:lengthControlLoop; %% duration and interpolation timestep for each control loop
   wakeAerodynamics=0;             %% use of wake aerodynamics
-  masterSatellite=2;              %% if 0 no master, 1 active master, 2 passive master,
+  masterSatellite=0;              %% if 0 no master, 1 active master, 2 passive master,
 
   sstDesiredFunction=@IvanovFormationFlightDesired;
   windOn=1;

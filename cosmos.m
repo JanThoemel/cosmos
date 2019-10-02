@@ -14,13 +14,13 @@
 %% 09/05/2019:  aerodynamics in local-x direction,i.e. pitch implemented, correctness to be checked
 %%
 %% todo:
-%% investigate accuracy and stability wrt deltaA, timestep, controlloop duration, other ODE solvers,meritfactors etc
-%% implement J2
-%% drag of master
-%% no drag in wake
-%% SGP4 
-%% eliptical orbits
-%% compute moment coefficients and moments
+%% -investigate accuracy and stability wrt deltaA, timestep, controlloop duration, other ODE solvers,meritfactors etc
+%% -implement J2
+%% -drag of master
+%% -no drag in wake
+%% -SGP4 
+%% -eliptical orbits
+%% -compute moment coefficients and moments
 
 %% Matlab parameters
 clear all; close all;clc;format shortEng;
