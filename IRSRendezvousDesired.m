@@ -1,4 +1,4 @@
-function [sstDesired]=IRSRendezvousDesired(timetemptemp,~,i)
+function [sstDesired]=IRSRendezvousDesired(timetemptemp,~,i,goFoFli)
 %% desired IRS rendezvous solution
   startSecondPhase=2*90*60;             %% [s]
   sstDesired=zeros(9,1,size(timetemptemp,2));

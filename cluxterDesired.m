@@ -1,4 +1,4 @@
-function [sstDesired]=cluxterDesired(timetemptemp,MeanMotion,i)
+function sstDesired=cluxterDesired(timetemptemp,MeanMotion,i,goFoFli)
 %% desired solution for Cluxter mission
   sstDesired=zeros(9,1,size(timetemptemp,2));
   %% analytical solution according to Ivanov

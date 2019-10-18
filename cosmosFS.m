@@ -14,6 +14,7 @@
 %% -clarify what data of the header goes to each satellite
 %% -use of Matlab timer function, maybe
 %% -one-RW control law
+%% -respect P/L attitude needs
 
 %% Revision history:
 %% 29/09/2019:  Ivanov case works
@@ -24,8 +25,8 @@ oldpath = path; path(oldpath,'..\matlabfunctions\')
 
 %% symbolic names of initial conditions and desired statevector functions
 %sstInitialFunction=@IRSRendezvousInitial;
-sstInitialFunction=@IvanovFormationFlightInitial;
-%sstInitialFunction=@cluxterInitial;
+%sstInitialFunction=@IvanovFormationFlightInitial;
+sstInitialFunction=@cluxterInitial;
 
 %% actual initial conditions of ODE, altitude is not used here therefore the ~
 [~,ns,~,panels,rho,v,radiusOfEarth,~,mu,satelliteMass,panelSurface,...
@@ -37,7 +38,7 @@ parpool(ns);
 
 startTime=posixtime(datetime('now')); %% posixtime, i.e. seconds
 accelerationFactor=10000;
-maxOrbits=20;
+maxOrbits=120;
 
 %% initial idx and altitude
 idx=120;
@@ -46,17 +47,19 @@ altitude=340000;
 %% data that will later be per satellite and therefore inside SPMD loop
 orbitSection    =2;         %degree
 orbitSections   =[1:orbitSection:360];
-orbitCounter    =0;  
+orbitCounter    =0;
 error           =zeros(6,ns);
 sst             =zeros(9,1);
 sstDesired      =zeros(6,1);
 sstOld          =zeros(9,1);
 refPosChangeTemp=zeros(3,1);
 
+%% these variables are for plotting. They will not be used for operational software
 SST_PP            =zeros(9,1);
 REFPOSCHANGE_PP   =zeros(3,1);
 TIME_PP           =0;
-    
+
+
 %% non-gravitational perturbations
 wind          =windOn*rho/2*v^2*[-1 0 0]';
 sunlight      =sunOn*2*4.5e-6*[0 0 -1]' ;       %% at reference location, needs to be rotated later
@@ -87,11 +90,9 @@ spmd(ns) %% create satellite instances
       %switch on GPS
     end
     SST_PP   =sst;
-
     
     while (goFoFli==1 || goFoFli==2)  %% orbit loop
       orbitCounter=orbitCounter+1;
-      send(DQ,strcat(num2str(labindex),': ------ no of orbit: ',num2str(orbitCounter)));
       startOrbit=now; %% posixtime, i.e. seconds
       %send(DQ,strcat(num2str(labindex),': orbittimer begin: ',num2str(posixtime(datetime('now'))-startTime)));
 
@@ -115,6 +116,7 @@ spmd(ns) %% create satellite instances
         %% compute attitude for next section
         %% determine desired trajectory
         sstDesired=sstDesiredFunction(orbitSections(idx)/meanMotion,meanMotion/180*pi,labindex,goFoFli);
+        %[sstDesired]=cluxterDesired(timetemptemp,MeanMotion,i)
         %% determine error
         error(1:6,labindex)=sst(1:6)-sstDesired(1:6);
         if not(masterSatellite)
@@ -198,7 +200,7 @@ spmd(ns) %% create satellite instances
         pause(orbitSection/meanMotion/accelerationFactor-(now-startSection));
         SST_PP=[SST_PP sst]; %% for plotting
       end %% orbit sections while loop
-      send(DQ,strcat(num2str(labindex),': duration of orbit: ',num2str(now-startOrbit)));  
+      send(DQ,strcat(num2str(labindex),': - no of orbit: ',num2str(orbitCounter),' duration: ',num2str(now-startOrbit),' s -'));  
     end %% orbit while loop 
     send(DQ,strcat('No.',num2str(labindex),' is dead.'))
     if goFoFli~=1 %% if orbit is broken, also break alive loop, this will change later with other conditions
