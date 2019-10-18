@@ -112,6 +112,7 @@ while currentTime<totalTime
       etemp(1:6,i,j)=sstTemp(1:6,i,j)-sstDesiredtemp(1:6,i,j);
     end   
     if not(masterSatellite) %% if there is no master satellite, the error will be distributed and x will be shifted    
+      averageError=zeros(6,1);
       %% ISL etemp
       %!
       for i=1:ns %% compute average error
