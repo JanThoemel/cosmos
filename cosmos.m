@@ -1,35 +1,21 @@
 %% the Science of the Operations of Mini Satellite fOrmations and Constellations
-%% COSMOS V0.1
-%%
-%% based on: 
-%% Deployment and Maintenance of Nanosatellite Tetrahedral Formation Flying Using Aerodynamic Forces
-%% 69th International Astronautical Congress (IAC), Bremen, Germany, 1-5 October 2018.
+%% COSMOS V0.2
 %%
 %% Revision history:
-%% 10/06/2019:  aerocoeff corrected, Ivanov and Traub work
-%% 06/08/2019:  Ivanov's formation flight seems to work only for a downscaled formation size
-%% 29/07/2019:  first version of satellite attitude through Euler angles implemented, needs verification
-%% 20/04/2019:  runs arbitrary number of satellites with HCW equation without control, looks much like fig 9 of Ivanov
-%% 04/05/2019:  LQR control implemented but without aerodynamics 
-%% 09/05/2019:  aerodynamics in local-x direction,i.e. pitch implemented, correctness to be checked
+%%  -removed, GitHub commit messages are enough
 %%
 %% todo:
-%% -investigate accuracy and stability wrt deltaA, timestep, controlloop duration, other ODE solvers,meritfactors etc
-%% -implement J2
-%% -drag of master
-%% -no drag in wake
-%% -SGP4 
-%% -eliptical orbits
-%% -compute moment coefficients and moments
+%%  -removed, will use GitHub ticketing system
 
 %% Matlab parameters
-clear all; close all;clc;format shortEng;
+clear all; close all;clc;format shortEng;format compact;
 oldpath = path; path(oldpath,'..\matlabfunctions\')
+oldpath = path; path(oldpath,'..\cosmosSupport\')
 
 %% symbolic names of initial conditions and desired statevector functions
 %sstInitialFunction=@IRSRendezvousInitial;
-sstInitialFunction=@IvanovFormationFlightInitial;
-%sstInitialFunction=@cluxterInitial;
+%sstInitialFunction=@IvanovFormationFlightInitial;
+sstInitialFunction=@cluxterInitial;
 
 %% actual initial conditions of ODE
 [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,meanMotion,mu,satelliteMass,panelSurface,...
@@ -39,7 +25,8 @@ sstInitialFunction=@IvanovFormationFlightInitial;
 [P,IR,A,B]=riccatiequation(meanMotion);
 %% non-gravitational perturbations
 wind          =windOn*rho/2*v^2*[-1 0 0]';
-sunlight      =sunOn*2*4.5e-6*[0 0 -1]' ;       %% at reference location, needs to be rotated later
+%sunlight      =sunOn*2*4.5e-6*[0 0 -1]' ;       %% at reference location, needs to be rotated later
+sunlight      =sunOn*2*4.5e-6*[0 -1 0]' ;       %% for dusk-dawn orbit
 
 %refsurf=panelSurface*panels(1);
 refSurf=panelSurface*panels(3);
@@ -53,7 +40,9 @@ aeropressureforcevector  =aeropressureforcevectorfunction(wind,panelSurface,pane
                                                           panels(2),panels(3),alphas,betas,gammas);
 solarpressureforcevector =solarpressureforcevectorfunction(sunlight,panelSurface,panels(1),...
                                                           panels(2),panels(3),alphas,betas,gammas);
-
+vecnorm(vecnorm(vecnorm(vecnorm(aeropressureforcevector))))
+vecnorm(vecnorm(vecnorm(vecnorm(solarpressureforcevector))))
+                                                        
 %% features
 stopUponTarget=0;               %% stop upon target conditions, use only for rendezvous
 targetBox(1)=15;targetBox(2)=1;targetBox(3)=10;targetBox(4)=0.01;
@@ -80,6 +69,7 @@ time          =0;               %% timevector with all steps
 refPosChange  =zeros(3,1);
 utemp         =zeros(3,ns,size(timetemp,2));
 etemp         =zeros(6,ns,size(timetemp,2));
+etempTransformed         =zeros(6,ns,size(timetemp,2));
 refPosChangeTemp  =zeros(3,size(timetemp,2));
 %% set sst for initial step right because only further steps are computed
 sst(:,:,1)    =sstTemp(:,:,1);
@@ -87,17 +77,6 @@ sst(:,:,1)    =sstTemp(:,:,1);
 %% solving the ODE in chunks per each control period
 firstTime     =1;
 currentTime   =0;           %% now, should usually be 0
-%figure
-
-%NS=parpool(ns);
-%DQ = parallel.pool.DataQueue;
-%afterEach(DQ,@disp);
-%spmd
-  %labindex replaces i
-  % in functions use switch for i/labindex
-  %when ISL then use labSend/labReceive
-%end
-%delete(mypool)
 
 while currentTime<totalTime
   %% Desired state vector
@@ -108,24 +87,75 @@ while currentTime<totalTime
   %! disturbances
   
   for j=1:size(timetemp,2)-1 %% control loop within ODE solver loop
+    %% define transformation, requires momentary sunlight vector
+    %rotatedSunLight=roty( -wrapTo2Pi( meanMotion*(currentTime+timetemp(j) ) )*180/pi )*sunlight
+    %meanMotion*(currentTime+timetemp(j) ) *180/pi
+    %if meanMotion*(currentTime+timetemp(j) ) *180/pi >100
+    %  return
+    %end
+    %vectarrow([0 0 0],rotatedSunLight);
+    %text(0,0,0,strcat(num2str(wrapTo2Pi(meanMotion*(currentTime+timetemp(j))))));
+    %fprintf(strcat('mm',num2str(meanMotion),'time ',num2str(currentTime+timetemp(j)),...
+    %    'angle ', num2str(180/pi*wrapTo2Pi(meanMotion*(currentTime+timetemp(j)))),'\n'));
+    %pause(0.2);
+    %newX=(wind+rotatedSunLight)/norm(wind+rotatedSunLight);
+    %newXangle=-atan2d(norm(cross([1 0 0],newX)),dot([1 0 0],newX))
+    %ob=null(newX.'); %% orthogonal base
+    %TM=[newX ob(:,1) ob(:,2)];
+    %TM=roty(newXangle);
+    %ITM=inv(TM);
+    %return;
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     for i=1:ns %% compute error
       etemp(1:6,i,j)=sstTemp(1:6,i,j)-sstDesiredtemp(1:6,i,j);
-    end   
-    if not(masterSatellite) %% if there is no master satellite, the error will be distributed and x will be shifted    
+      %etemp(1:6,i,j)=[0 0 1 0 0 0];
+      %% transform error
+      %etempTransformed(1:6,i,j)=[TM , zeros(3);zeros(3) TM]*etemp(1:6,i,j);
+      %etempTransformed(1:6,i,j)
+    end
+    %return
+    if not(masterSatellite) %% if there is no master satellite, the error will be distributed and x will be shifted
       averageError=zeros(6,1);
+      %% compute average error1
+      %averageErrorTransformed=zeros(6,1);
       %% ISL etemp
       %!
       for i=1:ns %% compute average error
         averageError(:)=averageError(:)+etemp(:,i,j)/ns;
+        %% compute average error
+        %averageErrorTransformed(:)=averageErrorTransformed(:)+etempTransformed(:,i,j)/ns;
       end
       %% ISL averageError
       %! 
-      for i=1:ns %% assign average error, shift x
-        etemp(2:6,i,j)=etemp(2:6,i,j)-averageError(2:6);
-        etemp(1,i,j)=etemp(1,i,j)-max(etemp(1,:,j));
+      maxiX=max(etemp(1,:,j));
+      maxiY=max(etemp(2,:,j));
+      %miniTransformed=min(etempTransformed(1,:,j));
+      for i=1:ns %% assign average error, shift x or y
+        etemp(3:6,i,j)=etemp(3:6,i,j)-averageError(3:6);
+        if norm(sunlight)==0 && norm(wind)~=0
+          etemp(1,i,j)  =etemp(1,i,j)-maxiX;
+          etemp(2,i,j)  =etemp(2,i,j)-averageError(2);
+          input('aero only')
+        elseif norm(sunlight)~=0 && norm(wind)==0
+          etemp(2,i,j)  =etemp(2,i,j)-maxiY;
+          etemp(1,i,j)  =etemp(1,i,j)-averageError(1);
+        else
+          fprintf('\n cosmos: error assign error, shift x or y');
+        end
+        %% distribute average error or max error
+        %etempTransformed(2:6,i,j) =etempTransformed(2:6,i,j)-averageErrorTransformed(2:6);
+        %etempTransformed(1,i,j)   =etempTransformed(1,i,j)-miniTransformed;
+        %etemp(:,i,j)'
       end
-    end  
-    
+      %% retransform error
+      %for i=1:ns 
+        %etemp(:,i,j)=[ITM,zeros(3);zeros(3),ITM]*etempTransformed(1:6,i,j);
+        %etemp(:,i,j)'
+      %end
+      %return;
+      %input('xx');
+    end
+    %j
     for i=1:ns %% solve ODE for each satellite
       [sstTemp(:,i,j+1),utemp(:,i,j+1)]=HCWEquation(...
         IR,P,A,B,timetemp(j+1)-timetemp(j),sstTemp(:,i,j),etemp(:,i,j),...
@@ -156,7 +186,6 @@ while currentTime<totalTime
       break;
     end
   end  %% end of control loop
-
   if firstTime==1 %% set sst for initial step right because only further steps are computed
     sst(:,:,1)  =sstTemp(:,:,1);
     firstTime   =0;
@@ -164,7 +193,7 @@ while currentTime<totalTime
   
   sstTemp(:,:,1)=sstTemp(:,:,end);
  
-  fprintf('\n');
+  %fprintf('\n');
   %% append data of last control loop to global data vector
   sst         =cat(3,sst,sstTemp(:,:,2:end));  
   u           =cat(3,u,utemp(:,:,2:end));   
@@ -173,7 +202,7 @@ while currentTime<totalTime
   time        =[time ; currentTime+timetemp(2:end)'];  
   %% print progress of iterations to screen
   if currentTime>0
-    fprintf('\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b')
+    fprintf('\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b')
   end
   currentTime=time(end);
   fprintf('simulated time %4.0f/%4.0f min (%3.0f%%)', currentTime/60, totalTime/60,currentTime/totalTime*100);
@@ -195,7 +224,7 @@ while currentTime<totalTime
   %}
 end %% global while/time loop
 
-hold off;
+%hold off;
 
 %% results' plotting
 plotting(sst(7:9,:,:),sst(1:6,:,:),refPosChange,time,ns,meanMotion,u,e);
