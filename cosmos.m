@@ -20,12 +20,12 @@ sstInitialFunction=@cluxterInitial;
 %% actual initial conditions of ODE
 [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,meanMotion,mu,satelliteMass,panelSurface,...
   sstDesiredFunction,windOn,sunOn,deltaAngle,timetemp,totalTime,wakeAerodynamics,masterSatellite]=sstInitialFunction(); 
+Twall=300;%% this goes to initialfunction
 
 %% settings for control algorithm
 [P,IR,A,B]=riccatiequation(meanMotion);
 %% non-gravitational perturbations
 wind          =windOn*rho/2*v^2*[-1 0 0]';
-%sunlight      =sunOn*2*4.5e-6*[0 0 -1]' ;       %% at reference location, needs to be rotated later
 sunlight      =sunOn*2*4.5e-6*[0 -1 0]' ;       %% for dusk-dawn orbit
 
 %refsurf=panelSurface*panels(1);
@@ -37,12 +37,14 @@ betas             =0:deltaAngle:180;     %% pitch
 gammas            =0:deltaAngle:360;     %% yaw
 
 aeropressureforcevector  =aeropressureforcevectorfunction(wind,panelSurface,panels(1),...
-                                                          panels(2),panels(3),alphas,betas,gammas);
+                                                          panels(2),panels(3),alphas,betas,gammas,rho,v,Twall);
 solarpressureforcevector =solarpressureforcevectorfunction(sunlight,panelSurface,panels(1),...
                                                           panels(2),panels(3),alphas,betas,gammas);
 vecnorm(vecnorm(vecnorm(vecnorm(aeropressureforcevector))))
 vecnorm(vecnorm(vecnorm(vecnorm(solarpressureforcevector))))
-                                                        
+sum(aeropressureforcevector,'all')
+sum(solarpressureforcevector,'all')
+
 %% features
 stopUponTarget=0;               %% stop upon target conditions, use only for rendezvous
 targetBox(1)=15;targetBox(2)=1;targetBox(3)=10;targetBox(4)=0.01;
@@ -69,7 +71,7 @@ time          =0;               %% timevector with all steps
 refPosChange  =zeros(3,1);
 utemp         =zeros(3,ns,size(timetemp,2));
 etemp         =zeros(6,ns,size(timetemp,2));
-etempTransformed         =zeros(6,ns,size(timetemp,2));
+etempTransformed  =zeros(6,ns,size(timetemp,2));
 refPosChangeTemp  =zeros(3,size(timetemp,2));
 %% set sst for initial step right because only further steps are computed
 sst(:,:,1)    =sstTemp(:,:,1);
@@ -97,65 +99,62 @@ while currentTime<totalTime
     %text(0,0,0,strcat(num2str(wrapTo2Pi(meanMotion*(currentTime+timetemp(j))))));
     %fprintf(strcat('mm',num2str(meanMotion),'time ',num2str(currentTime+timetemp(j)),...
     %    'angle ', num2str(180/pi*wrapTo2Pi(meanMotion*(currentTime+timetemp(j)))),'\n'));
-    %pause(0.2);
-    %newX=(wind+rotatedSunLight)/norm(wind+rotatedSunLight);
-    %newXangle=-atan2d(norm(cross([1 0 0],newX)),dot([1 0 0],newX))
-    %ob=null(newX.'); %% orthogonal base
-    %TM=[newX ob(:,1) ob(:,2)];
-    %TM=roty(newXangle);
-    %ITM=inv(TM);
-    %return;
+    resultantForce=(wind+sunlight)/norm(wind+sunlight);
+    angleResultantForce=-atan2d(norm(cross([1 0 0],resultantForce)),dot([1 0 0],resultantForce));
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     for i=1:ns %% compute error
       etemp(1:6,i,j)=sstTemp(1:6,i,j)-sstDesiredtemp(1:6,i,j);
-      %etemp(1:6,i,j)=[0 0 1 0 0 0];
       %% transform error
-      %etempTransformed(1:6,i,j)=[TM , zeros(3);zeros(3) TM]*etemp(1:6,i,j);
-      %etempTransformed(1:6,i,j)
+      etempTransformed(1:6,i,j)=[rotz(angleResultantForce) zeros(3);zeros(3) rotz(angleResultantForce)]*etemp(1:6,i,j);
     end
-    %return
     if not(masterSatellite) %% if there is no master satellite, the error will be distributed and x will be shifted
       averageError=zeros(6,1);
       %% compute average error1
-      %averageErrorTransformed=zeros(6,1);
+      averageErrorTransformed=zeros(6,1);
       %% ISL etemp
       %!
       for i=1:ns %% compute average error
         averageError(:)=averageError(:)+etemp(:,i,j)/ns;
         %% compute average error
-        %averageErrorTransformed(:)=averageErrorTransformed(:)+etempTransformed(:,i,j)/ns;
+        averageErrorTransformed(:)=averageErrorTransformed(:)+etempTransformed(:,i,j)/ns;
       end
       %% ISL averageError
       %! 
       maxiX=max(etemp(1,:,j));
       maxiY=max(etemp(2,:,j));
-      %miniTransformed=min(etempTransformed(1,:,j));
+      miniTransformed=min(etempTransformed(1,:,j));
       for i=1:ns %% assign average error, shift x or y
         etemp(3:6,i,j)=etemp(3:6,i,j)-averageError(3:6);
-        if norm(sunlight)==0 && norm(wind)~=0
+        etempTransformed(3:6,i,j)  =etempTransformed(3:6,i,j)-averageErrorTransformed(3:6);
+        if not(sunOn) && windOn %% wind only
           etemp(1,i,j)  =etemp(1,i,j)-maxiX;
           etemp(2,i,j)  =etemp(2,i,j)-averageError(2);
-          input('aero only')
-        elseif norm(sunlight)~=0 && norm(wind)==0
+          %fprintf('\n w')
+        elseif sunOn && not(windOn) %% sun only
           etemp(2,i,j)  =etemp(2,i,j)-maxiY;
           etemp(1,i,j)  =etemp(1,i,j)-averageError(1);
-        else
-          fprintf('\n cosmos: error assign error, shift x or y');
+          %fprintf('\n s')
+        elseif sunOn && windOn %% wind and sun
+          etempTransformed(1,i,j)  =etempTransformed(1,i,j)-miniTransformed;
+          etempTransformed(2,i,j)  =etempTransformed(2,i,j)-averageErrorTransformed(2);
+          %fprintf('\n sw')
+        else %% Houston, we have a problem
+          %fprintf('\n cosmos: error assign error');
         end
         %% distribute average error or max error
-        %etempTransformed(2:6,i,j) =etempTransformed(2:6,i,j)-averageErrorTransformed(2:6);
-        %etempTransformed(1,i,j)   =etempTransformed(1,i,j)-miniTransformed;
         %etemp(:,i,j)'
       end
       %% retransform error
-      %for i=1:ns 
-        %etemp(:,i,j)=[ITM,zeros(3);zeros(3),ITM]*etempTransformed(1:6,i,j);
-        %etemp(:,i,j)'
-      %end
+      for i=1:ns 
+        if sunOn && windOn %% wind and sun
+          etemp(:,i,j)=[rotz(-angleResultantForce) zeros(3);zeros(3) rotz(-angleResultantForce)]*etempTransformed(1:6,i,j);
+          %fprintf('\n sw2')
+        end
+        %  etemp(:,i,j)'
+      end
       %return;
-      %input('xx');
     end
-    %j
+    
     for i=1:ns %% solve ODE for each satellite
       [sstTemp(:,i,j+1),utemp(:,i,j+1)]=HCWEquation(...
         IR,P,A,B,timetemp(j+1)-timetemp(j),sstTemp(:,i,j),etemp(:,i,j),...
@@ -164,6 +163,9 @@ while currentTime<totalTime
         sstTemp(8,i,j),sstTemp(9,i,j),refSurf,satelliteMass,wakeAerodynamics,masterSatellite,...
         currentTime+timetemp(j),radiusOfEarth,altitude,meanMotion);
     end
+    %if currentTime>=20000
+    %  input('')
+    %end
     %% if there is no mastersatellite, the coordinate system based at sat1 will be shifted
     if not(masterSatellite) 
       refPosChangeTemp(:,j+1)=sstTemp(1:3,1,j+1)-sstTemp(1:3,1,j);
