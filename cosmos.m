@@ -24,13 +24,15 @@ sstInitialFunction=@cluxterInitial;
 %% actual initial conditions of ODE
 [sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,meanMotion,mu,satelliteMass,panelSurface,...
   sstDesiredFunction,windOn,sunOn,deltaAngle,timetemp,totalTime,wakeAerodynamics,masterSatellite]=sstInitialFunction(); 
-Twall=300;%% this goes to initialfunction, it may have to be dynamic inside the iterative cycle
+Tatmos=900;%% this goes to initialfunction, it may have to be dynamic inside the iterative cycle
+
+meanMotion
 
 %% settings for control algorithm
 [P,IR,A,B]=riccatiequation(meanMotion);
 %% non-gravitational perturbations
-wind          =windOn*rho/2*v^2*[-1 0 0]';
-sunlight      =sunOn *2*4.5e-6* [0 -1 0]' ;       %% for dusk-dawn orbit
+wind          =windOn*rho/2*v^2*[-1 0 0]'
+sunlight      =sunOn *2*4.5e-6* [0 -1 0]'       %% for dusk-dawn orbit
 
 %refsurf=panelSurface*panels(1);
 refSurf=panelSurface*panels(3);
@@ -41,15 +43,15 @@ betas             =0:deltaAngle:180;     %% pitch
 gammas            =0:deltaAngle:360;     %% yaw
 
 aeropressureforcevector  =aeropressureforcevectorfunction(wind,panelSurface,panels(1),...
-                                                          panels(2),panels(3),alphas,betas,gammas,rho,v,Twall);
+                                                          panels(2),panels(3),alphas,betas,gammas,rho,v,Tatmos);
 solarpressureforcevector =solarpressureforcevectorfunction(sunlight,panelSurface,panels(1),...
                                                           panels(2),panels(3),alphas,betas,gammas);
 
 %% output of some key indicator for the amount of non-gravitational forces
-vecnorm(vecnorm(vecnorm(vecnorm(aeropressureforcevector))))
-vecnorm(vecnorm(vecnorm(vecnorm(solarpressureforcevector))))
-sum(aeropressureforcevector,'all')
-sum(solarpressureforcevector,'all')
+%vecnorm(vecnorm(vecnorm(vecnorm(aeropressureforcevector))))
+%vecnorm(vecnorm(vecnorm(vecnorm(solarpressureforcevector))))
+%sum(aeropressureforcevector,'all')
+%sum(solarpressureforcevector,'all')
 
 %% features
 stopUponTarget=0;               %% stop upon target conditions, use only for rendezvous
@@ -116,13 +118,13 @@ while currentTime<totalTime
       etempTransformed(1:6,i,j)=[rotz(angleResultantForce) zeros(3);zeros(3) rotz(angleResultantForce)]*etemp(1:6,i,j);
     end
     if not(masterSatellite) %% if there is no master satellite, the error will be distributed and x will be shifted
-      averageError=zeros(6,1);
+      %%%averageError=zeros(6,1);
       %% compute average error1
       averageErrorTransformed=zeros(6,1);
       %% ISL etemp
       %!
       for i=1:ns %% compute average error
-        averageError(:)=averageError(:)+etemp(:,i,j)/ns;
+        %%%averageError(:)=averageError(:)+etemp(:,i,j)/ns;
         %% compute average error
         averageErrorTransformed(:)=averageErrorTransformed(:)+etempTransformed(:,i,j)/ns ;      
         %averateErrorRetransformed=[rotz(-angleResultantForce) zeros(3);zeros(3) rotz(-angleResultantForce)]*averageErrorTransformed(:)
@@ -130,34 +132,35 @@ while currentTime<totalTime
       
       %% ISL averageError
       %! 
-      maxiX=max(etemp(1,:,j));
-      maxiY=max(etemp(2,:,j));
+      %%%maxiX=max(etemp(1,:,j));
+      %%%maxiY=max(etemp(2,:,j));
       miniTransformed=min(etempTransformed(1,:,j));
       for i=1:ns %% assign average error, shift x or y
-        etemp(3:6,i,j)              =etemp(3:6,i,j)-averageError(3:6);
-        etempTransformed(3:6,i,j)   =etempTransformed(3:6,i,j)-averageErrorTransformed(3:6);
-        if not(sunOn) && windOn %% wind only
-          etemp(1,i,j)        =etemp(1,i,j)-maxiX;
-          etemp(2,i,j)        =etemp(2,i,j)-averageError(2);
-          %fprintf('\n w')
+        %%%etemp(3:6,i,j)              =etemp(3:6,i,j)-averageError(3:6);
+        etempTransformed(2:6,i,j)   =etempTransformed(2:6,i,j)-averageErrorTransformed(2:6);
+       %%% etempTransformed(3:6,i,j)   =etempTransformed(3:6,i,j)-averageErrorTransformed(3:6);
+       %%% if not(sunOn) && windOn %% wind only
+       %%%   etemp(1,i,j)        =etemp(1,i,j)-maxiX;
+       %%%   etemp(2,i,j)        =etemp(2,i,j)-averageError(2);
+       %%%   %fprintf('\n w')
           %etemp(:,i,j)'
-        elseif sunOn && not(windOn) %% sun only
-          etemp(2,i,j)        =etemp(2,i,j)-maxiY;
-          etemp(1,i,j)        =etemp(1,i,j)-averageError(1);
+       %%% elseif sunOn && not(windOn) %% sun only
+       %%%   etemp(2,i,j)        =etemp(2,i,j)-maxiY;
+       %%%   etemp(1,i,j)        =etemp(1,i,j)-averageError(1);
           %fprintf('\n s')
-        elseif sunOn && windOn %% wind and sun
+       %%% elseif sunOn && windOn %% wind and sun
           etempTransformed(1,i,j)  =etempTransformed(1,i,j)-miniTransformed;
-          etempTransformed(2,i,j)  =etempTransformed(2,i,j)-averageErrorTransformed(2);
+      %%%    etempTransformed(2,i,j)  =etempTransformed(2,i,j)-averageErrorTransformed(2);
           %fprintf('\n sw')
-        else %% Houston, we have a problem
+       %%% else %% Houston, we have a problem
           %fprintf('\n cosmos: error assign error');
-        end
+       %%% end
       end
       %% retransform error
       for i=1:ns 
-        if sunOn && windOn %% wind and sun
+      %%  if sunOn && windOn %% wind and sun
           etemp(:,i,j)=[rotz(-angleResultantForce) zeros(3);zeros(3) rotz(-angleResultantForce)]*etempTransformed(1:6,i,j);
-        end
+      %%  end
       end
      % for i=1:ns
      %   fprintf('e')
@@ -220,10 +223,10 @@ while currentTime<totalTime
   time        =[time ; currentTime+timetemp(2:end)'];  
   %% print progress of iterations to screen
   if currentTime>0
-    fprintf('\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b')
+    fprintf('\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b')
   end
   currentTime=time(end);
-  fprintf('simulated time %4.0f/%4.0f min (%3.0f%%)', currentTime/60, totalTime/60,currentTime/totalTime*100);
+  fprintf('simulated time %5.0f/%5.0f min (%3.0f%%)', currentTime/60, totalTime/60,currentTime/totalTime*100);
 
   if stopUponTarget && abs(sstTemp(1,2,j))<targetBox(1) && abs(sstTemp(2,2,j))<targetBox(2) &&...
      abs(sstTemp(3,2,j))<targetBox(3) && sqrt(sstTemp(4,2,j)^2+sstTemp(5,2,j)^2+sstTemp(6,2,j)^2)<targetBox(4)
