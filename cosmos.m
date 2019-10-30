@@ -28,7 +28,7 @@ sstInitialFunction=@cluxterInitial;
 
 
 %% settings for control algorithm
-[P,IR,A,B]=riccatiequation(meanMotion);
+[P,IR,A,B]=riccatiequation(meanMotion,SSCoeff);
 %% non-gravitational perturbations
 wind          =windOn*rho/2*v^2*[-1 0 0]'
 sunlight      =sunOn *2*4.5e-6* [0 -1 0]'       %% for dusk-dawn orbit
@@ -45,7 +45,9 @@ aeropressureforcevector  =aeropressureforcevectorfunction(wind,panelSurface,pane
                                                           panels(2),panels(3),alphas,betas,gammas,rho,v,Tatmos);
 solarpressureforcevector =solarpressureforcevectorfunction(sunlight,panelSurface,panels(1),...
                                                           panels(2),panels(3),alphas,betas,gammas);
+                                                        
 
+                                                        
 %% output of some key indicator for the amount of non-gravitational forces
 %vecnorm(vecnorm(vecnorm(vecnorm(aeropressureforcevector))))
 %vecnorm(vecnorm(vecnorm(vecnorm(solarpressureforcevector))))
@@ -270,6 +272,8 @@ if VIS_DO
   else
     VIS_MASTERFILENAME="";
   end
+  %% recover inclination for SSCoeff, implement use of inclination in visualization
+  inclination=SSCoeff*0;
   visualization(ns,time,VIS_SCALE*sst(1,:,:),VIS_SCALE*sst(2,:,:),VIS_SCALE*sst(3,:,:),altitude,anglesGE, VIS_MODELFILENAME,VIS_MASTERFILENAME,radiusOfEarth,mu,VIS_STEP,VIS_ACC_FACTOR,VIS_FOOTPRINT,VIS_US)
 end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
