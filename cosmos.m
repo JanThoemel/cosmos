@@ -22,11 +22,10 @@ oldpath = path; path(oldpath,'..\cosmosSupport\')
 sstInitialFunction=@cluxterInitial;
 
 %% actual initial conditions of ODE
-[sstTemp,ns,altitude,panels,rho,v,radiusOfEarth,meanMotion,mu,satelliteMass,panelSurface,...
-  sstDesiredFunction,windOn,sunOn,deltaAngle,timetemp,totalTime,wakeAerodynamics,masterSatellite]=sstInitialFunction(); 
-Tatmos=900;%% this goes to initialfunction, it may have to be dynamic inside the iterative cycle
+[sstTemp,ns,altitude,panels,rho,Tatmos,v,radiusOfEarth,meanMotion,mu,satelliteMass,panelSurface,...
+  sstDesiredFunction,windOn,sunOn,deltaAngle,timetemp,totalTime,wakeAerodynamics,masterSatellite,...
+  SSCoeff,SSParameters,meanAnomalyOffSet]=sstInitialFunction(); 
 
-meanMotion
 
 %% settings for control algorithm
 [P,IR,A,B]=riccatiequation(meanMotion);
@@ -91,7 +90,7 @@ currentTime   =0;           %% now, should usually be 0
 while currentTime<totalTime
   %% Desired state vector
   for i=1:ns
-    sstDesiredtemp(:,i,:)=sstDesiredFunction(currentTime+timetemp,meanMotion,i,1);
+    sstDesiredtemp(:,i,:)=sstDesiredFunction(currentTime+timetemp,meanMotion,i,1,SSCoeff,squeeze(SSParameters(:,i,1)),meanAnomalyOffSet);
   end
   %% apply disturbances
   %! disturbances
