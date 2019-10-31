@@ -24,7 +24,7 @@ sstInitialFunction=@cluxterInitial;
 %% actual initial conditions of ODE
 [sstTemp,ns,altitude,panels,rho,Tatmos,v,radiusOfEarth,meanMotion,mu,satelliteMass,panelSurface,...
   sstDesiredFunction,windOn,sunOn,deltaAngle,timetemp,totalTime,wakeAerodynamics,masterSatellite,...
-  SSCoeff,SSParameters,meanAnomalyOffSet]=sstInitialFunction(); 
+  SSCoeff,inclination,SSParameters,meanAnomalyOffSet]=sstInitialFunction(); 
 
 
 %% settings for control algorithm
@@ -171,7 +171,7 @@ while currentTime<totalTime
     end %% if mastersatellite
     
     for i=1:ns %% solve ODE for each satellite
-      [sstTemp(:,i,j+1),utemp(:,i,j+1)]=HCWEquation(...
+      [sstTemp(:,i,j+1),utemp(:,i,j+1)]=SSEquation(...
         IR,P,A,B,timetemp(j+1)-timetemp(j),sstTemp(:,i,j),etemp(:,i,j),...
         sqrt(wind(1)^2+wind(2)^2+wind(3)^2),sqrt(sunlight(1)^2+sunlight(2)^2+sunlight(3)^2),...
         alphas,betas,gammas,aeropressureforcevector,solarpressureforcevector,sstTemp(7,i,j),...
@@ -272,8 +272,11 @@ if VIS_DO
   else
     VIS_MASTERFILENAME="";
   end
-  %% recover inclination for SSCoeff, implement use of inclination in visualization
-  inclination=SSCoeff*0;
+  
+  if inclination~=90
+    fprintf('\n warning Visualization does not yet account for inclinations unequal 90 deg\n');
+  end
+  
   visualization(ns,time,VIS_SCALE*sst(1,:,:),VIS_SCALE*sst(2,:,:),VIS_SCALE*sst(3,:,:),altitude,anglesGE, VIS_MODELFILENAME,VIS_MASTERFILENAME,radiusOfEarth,mu,VIS_STEP,VIS_ACC_FACTOR,VIS_FOOTPRINT,VIS_US)
 end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
