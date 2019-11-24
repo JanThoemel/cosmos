@@ -3,7 +3,7 @@
 %% Main features:
 %%  -LQR control
 %%  -Euler angle aerodynamics
-%%  -simple GSI, SRP
+%%  -full GSI, SRP
 %%
 %% Revision history:
 %%  -removed, GitHub commit messages are enough
@@ -12,23 +12,40 @@
 %%  -removed, will use GitHub ticketing system
 
 %% Matlab parameters
-clear all; close all;clc;format longEng;format compact;
-oldpath = path; path(oldpath,'..\matlabfunctions\')
-oldpath = path; path(oldpath,'..\cosmosSupport\')
+clear all; close all;clc;format shortEng;format compact;
+oldpath = path; path(oldpath,strcat('..',filesep,'matlabfunctions',filesep))
+oldpath = path; path(oldpath,strcat('..',filesep,'cosmosSupport',filesep))
 
 %% symbolic names of initial conditions and desired statevector functions
 %sstInitialFunction=@IRSRendezvousInitial;
-%sstInitialFunction=@IvanovFormationFlightInitial;
-sstInitialFunction=@cluxterInitial;
+sstInitialFunction=@IvanovFormationFlightInitial;
+%sstInitialFunction=@cluxterInitial;
+
+%%----------------
+%%----this is to produce figures for the paper----
+%{
+sunOn=1;
+  altis=[450e3,450e3,550e3,550e3,650e3,650e3];
+  altis=[450e3,450e3,650e3,650e3];
+  %altis=[450e3,450e3,550e3,550e3];
+  %altis=[500e3];
+for alt=1:size(altis,2)
+%% actual initial conditions of ODE
+[sstTemp,ns,altitude,panels,rho,Tatmos,v,radiusOfEarth,meanMotion,mu,satelliteMass,panelSurface,...
+  sstDesiredFunction,windOn,sunOn,deltaAngle,timetemp,totalTime,wakeAerodynamics,masterSatellite,...
+  SSCoeff,inclination,SSParameters,meanAnomalyOffSet]=sstInitialFunction(altis(alt),sunOn); 
+%}
+%%----------------  
 
 %% actual initial conditions of ODE
 [sstTemp,ns,altitude,panels,rho,Tatmos,v,radiusOfEarth,meanMotion,mu,satelliteMass,panelSurface,...
   sstDesiredFunction,windOn,sunOn,deltaAngle,timetemp,totalTime,wakeAerodynamics,masterSatellite,...
   SSCoeff,inclination,SSParameters,meanAnomalyOffSet]=sstInitialFunction(); 
-
+%%% meanMotion in [rad/s]
 
 %% settings for control algorithm
 [P,IR,A,B]=riccatiequation(meanMotion,SSCoeff);
+
 %% non-gravitational perturbations
 wind          =windOn*rho/2*v^2*[-1 0 0]'
 sunlight      =sunOn *2*4.5e-6* [0 -1 0]'       %% for dusk-dawn orbit
@@ -42,11 +59,9 @@ betas             =0:deltaAngle:180;     %% pitch
 gammas            =0:deltaAngle:360;     %% yaw
 
 aeropressureforcevector  =aeropressureforcevectorfunction(wind,panelSurface,panels(1),...
-                                                          panels(2),panels(3),alphas,betas,gammas,rho,v,Tatmos);
+                               panels(2),panels(3),alphas,betas,gammas,rho,v,Tatmos);
 solarpressureforcevector =solarpressureforcevectorfunction(sunlight,panelSurface,panels(1),...
-                                                          panels(2),panels(3),alphas,betas,gammas);
-                                                        
-
+                               panels(2),panels(3),alphas,betas,gammas);
                                                         
 %% output of some key indicator for the amount of non-gravitational forces
 %vecnorm(vecnorm(vecnorm(vecnorm(aeropressureforcevector))))
@@ -72,6 +87,10 @@ VIS_US            =0;           %% should upper stage (US) be shown?
 %% length of animation in min: totaltime/vis_step/accelerationfactor/60
 fprintf('duration of movie without upper stage flight: %2.1f min\n',totalTime/VIS_ACC_FACTOR/60) 
 
+%% solving the ODE in chunks per each control period
+firstTime         =1;
+currentTime       =0;           %% now, should usually be 0
+
 %% some initializations
 u             =zeros(3,ns);     %% control vector
 e             =zeros(6,ns);     %% error vector
@@ -85,90 +104,39 @@ refPosChangeTemp  =zeros(3,size(timetemp,2));
 %% set sst for initial step right because only further steps are computed
 sst(:,:,1)    =sstTemp(:,:,1);
 
-%% solving the ODE in chunks per each control period
-firstTime     =1;
-currentTime   =0;           %% now, should usually be 0
-
 while currentTime<totalTime
   %% Desired state vector
   for i=1:ns
     sstDesiredtemp(:,i,:)=sstDesiredFunction(currentTime+timetemp,meanMotion,i,1,SSCoeff,squeeze(SSParameters(:,i,1)),meanAnomalyOffSet);
   end
   %% apply disturbances
-  %! disturbances
-  
+  %! disturbances  
   for j=1:size(timetemp,2)-1 %% control loop within ODE solver loop
     %% define transformation, requires momentary sunlight vector
-    %rotatedSunLight=roty( -wrapTo2Pi( meanMotion*(currentTime+timetemp(j) ) )*180/pi )*sunlight
-    %meanMotion*(currentTime+timetemp(j) ) *180/pi
-    %if meanMotion*(currentTime+timetemp(j) ) *180/pi >100
-    %  return
-    %end
-    %vectarrow([0 0 0],rotatedSunLight);
-    %text(0,0,0,strcat(num2str(wrapTo2Pi(meanMotion*(currentTime+timetemp(j))))));
-    %fprintf(strcat('mm',num2str(meanMotion),'time ',num2str(currentTime+timetemp(j)),...
-    %    'angle ', num2str(180/pi*wrapTo2Pi(meanMotion*(currentTime+timetemp(j)))),'\n'));
     resultantForce=(wind+sunlight)/norm(wind+sunlight);
-    %resultantForce'
     angleResultantForce=atan2d(norm(cross([1 0 0],resultantForce)),dot([1 0 0],resultantForce));
-    %angleResultantForce
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     for i=1:ns %% compute error
       etemp(1:6,i,j)=sstTemp(1:6,i,j)-sstDesiredtemp(1:6,i,j);
-      %% transform error
-      etempTransformed(1:6,i,j)=[rotz(angleResultantForce) zeros(3);zeros(3) rotz(angleResultantForce)]*etemp(1:6,i,j);
     end
-    if not(masterSatellite) %% if there is no master satellite, the error will be distributed and x will be shifted
-      %%%averageError=zeros(6,1);
-      %% compute average error1
-      averageErrorTransformed=zeros(6,1);
-      %% ISL etemp
-      %!
+    for i=1:ns %% transform error
+      etempTransformed(1:6,i,j)   =[rotz(angleResultantForce) zeros(3);zeros(3) rotz(angleResultantForce)]*etemp(1:6,i,j);        
+    end
+    if not(masterSatellite) %% if there is no master satellite, the error will be distributed
+      averageErrorTransformed     =zeros(6,1);
       for i=1:ns %% compute average error
-        %%%averageError(:)=averageError(:)+etemp(:,i,j)/ns;
-        %% compute average error
-        averageErrorTransformed(:)=averageErrorTransformed(:)+etempTransformed(:,i,j)/ns ;      
-        %averateErrorRetransformed=[rotz(-angleResultantForce) zeros(3);zeros(3) rotz(-angleResultantForce)]*averageErrorTransformed(:)
-      end
-      
-      %% ISL averageError
-      %! 
-      %%%maxiX=max(etemp(1,:,j));
-      %%%maxiY=max(etemp(2,:,j));
-      miniTransformed=min(etempTransformed(1,:,j));
-      for i=1:ns %% assign average error, shift x or y
-        %%%etemp(3:6,i,j)              =etemp(3:6,i,j)-averageError(3:6);
-        etempTransformed(2:6,i,j)   =etempTransformed(2:6,i,j)-averageErrorTransformed(2:6);
-       %%% etempTransformed(3:6,i,j)   =etempTransformed(3:6,i,j)-averageErrorTransformed(3:6);
-       %%% if not(sunOn) && windOn %% wind only
-       %%%   etemp(1,i,j)        =etemp(1,i,j)-maxiX;
-       %%%   etemp(2,i,j)        =etemp(2,i,j)-averageError(2);
-       %%%   %fprintf('\n w')
-          %etemp(:,i,j)'
-       %%% elseif sunOn && not(windOn) %% sun only
-       %%%   etemp(2,i,j)        =etemp(2,i,j)-maxiY;
-       %%%   etemp(1,i,j)        =etemp(1,i,j)-averageError(1);
-          %fprintf('\n s')
-       %%% elseif sunOn && windOn %% wind and sun
-          etempTransformed(1,i,j)  =etempTransformed(1,i,j)-miniTransformed;
-      %%%    etempTransformed(2,i,j)  =etempTransformed(2,i,j)-averageErrorTransformed(2);
-          %fprintf('\n sw')
-       %%% else %% Houston, we have a problem
-          %fprintf('\n cosmos: error assign error');
-       %%% end
-      end
-      %% retransform error
-      for i=1:ns 
-      %%  if sunOn && windOn %% wind and sun
-          etemp(:,i,j)=[rotz(-angleResultantForce) zeros(3);zeros(3) rotz(-angleResultantForce)]*etempTransformed(1:6,i,j);
-      %%  end
-      end
-     % for i=1:ns
-     %   fprintf('e')
-     %  etemp(:,i,j)'
-     % end
-      %return
+        averageErrorTransformed(:)=averageErrorTransformed(:)+etempTransformed(:,i,j)/ns;
+      end      
+      %for i=1:ns %% assign average error
+      %  etempTransformed(2:6,i,j) =etempTransformed(2:6,i,j)-averageErrorTransformed(2:6);
+      %end
     end %% if mastersatellite
+      miniTransformed               =min(etempTransformed(1,:,j));
+    for i=1:ns %% shift error
+      etempTransformed(1,i,j)     =etempTransformed(1,i,j)-miniTransformed;
+    end
+    for i=1:ns %% retransform error
+      etemp(:,i,j)    =[rotz(-angleResultantForce) zeros(3);zeros(3) rotz(-angleResultantForce)]*etempTransformed(1:6,i,j);
+    end
     
     for i=1:ns %% solve ODE for each satellite
       [sstTemp(:,i,j+1),utemp(:,i,j+1)]=SSEquation(...
@@ -178,23 +146,11 @@ while currentTime<totalTime
         sstTemp(8,i,j),sstTemp(9,i,j),refSurf,satelliteMass,wakeAerodynamics,masterSatellite,...
         currentTime+timetemp(j),radiusOfEarth,altitude,meanMotion);
     end
-    %for i=1:ns
-      %fprintf('u')
-      %utemp(:,i,j+1)'
-   % end
-    %if currentTime>=20000
-    %  input('')
-    %end
-    %% if there is no mastersatellite, the coordinate system based at sat1 will be shifted
-    if not(masterSatellite) 
-      refPosChangeTemp(1:3,j+1)=sstTemp(1:3,1,j+1)-sstTemp(1:3,1,j);
-      %% ISL refPosChangeTemp(:,j+1)
-      %!
-      for i=1:ns %% move coordinate system
-        sstTemp(1:3,i,j+1)=sstTemp(1:3,i,j+1)-refPosChangeTemp(:,j+1);
-      end
-    end %% if masterSatellite
-        
+    refPosChangeTemp(1:3,j+1)=sstTemp(1:3,1,j+1)-sstTemp(1:3,1,j);
+    %fprintf('\n--%f--%f',etemp(1,1,j),refPosChangeTemp(1,j+1))    
+    for i=1:ns %% move coordinate system
+      sstTemp(1:3,i,j+1)=sstTemp(1:3,i,j+1)-refPosChangeTemp(:,j+1);
+    end
     %% this is to interrupt when a condition, i.e. proximity is achieved, don't use if you start in
     %% proximity as for instance for formation flight 
     if stopUponTarget && abs(sstTemp(1,2,j))<targetBox(1) && abs(sstTemp(2,2,j))<targetBox(2) &&...
@@ -205,7 +161,6 @@ while currentTime<totalTime
       break;
     end
   end  %% end of control loop
-  %sstTemp(:,:,:)
 
   if firstTime==1 %% set sst for initial step right because only further steps are computed
     sst(:,:,1)  =sstTemp(:,:,1);
@@ -246,7 +201,155 @@ while currentTime<totalTime
   %}
 end %% global while/time loop
 
-%hold off;
+
+%----------------
+%%----this is to produce figures for the paper----
+%{
+if alt==1
+  displayY=zeros(size(altis,2),ns,size(sst,3));
+  ealt=zeros(size(altis,2),3,ns,size(sst,3));
+end
+for i=1:ns
+  for j=1:size(sst,3)
+    displayY(alt,i,j)=sst(2,i,j);
+    ealt(alt,:,i,j)=e(1:3,i,j);
+  end
+end
+sunOn=1-sunOn;
+
+end
+if 0 %% plot Y for different altitudes and sunOn and sunOff
+  sunOn=1;
+  ax = axes;
+  hold on;
+  numberOfColors = length(ax.ColorOrder);
+  ax.ColorOrderIndex = 1;
+  %figure;
+  for i=1:size(altis,2)
+    Q=plot(time/2/pi*meanMotion,squeeze(displayY(i,2,:))); %% plot y-movement of 2nd satellite
+    hold on
+    if sunOn
+      ax.ColorOrderIndex = mod(ax.ColorOrderIndex-2,numberOfColors)+1; % keep same color
+      %Q.ColorOrderIndex = Q.ColorOrderIndex-1
+    else
+      Q.LineStyle='--';
+    end
+    legendnames(i)={strcat('Y',num2str(altis(i)),int2str(sunOn))};    
+    %legend('x','y','z');title('reference position change')
+    sunOn=1-sunOn;
+  end
+  legend(legendnames);
+  hold off;  
+end
+
+if 1 %% plot e for different altitudes and sunOn and sunOff
+  sunOn=1;
+  ax1 = axes;
+  hold on;
+  numberOfColors = length(ax1.ColorOrder);
+  ax1.ColorOrderIndex = 1;
+  figure
+  subplot(5,1,1)
+  for i=1:size(altis,2)
+    %Q1=plot(time,squeeze(ealt(i,1,1,:)),time,squeeze(ealt(i,1,2,:)),time,squeeze(ealt(i,1,3,:))); %% plot e of 2nd satellite
+    Q1=plot(time/2/pi*meanMotion,squeeze(ealt(i,1,2,:))); %% plot e of 2nd satellite
+    hold on
+    if sunOn
+      ax1.ColorOrderIndex = mod(ax1.ColorOrderIndex-2,numberOfColors)+1; % keep same color
+      %Q1.ColorOrderIndex = Q1.ColorOrderIndex-1
+    else
+      %Q1.LineStyle='--';
+    end
+    legendnames(i)={strcat('e',num2str(altis(i)),int2str(sunOn))};    
+    %legend('x','y','z');title('reference position change')
+    sunOn=1-sunOn;
+  end
+  legend(legendnames);
+  
+  sunOn=1;
+  ax2 = axes;
+  hold on;
+  numberOfColors = length(ax2.ColorOrder);
+  ax2.ColorOrderIndex = 1;
+  subplot(5,1,2)
+  for i=1:size(altis,2)
+    %Q2=plot(time,squeeze(ealt(i,2,1,:)),time,squeeze(ealt(i,2,2,:)),time,squeeze(ealt(i,2,3,:))); %% plot e of 2nd satellite
+    Q2=plot(time/2/pi*meanMotion,squeeze(ealt(i,2,2,:))); %% plot e of 2nd satellite
+    hold on
+    if sunOn
+      %ax2.ColorOrderIndex = mod(ax2.ColorOrderIndex-2,numberOfColors)+1; % keep same color
+      %Q2.ColorOrderIndex = Q2.ColorOrderIndex-1
+    else
+      %Q2.LineStyle='--';
+    end
+    sunOn=1-sunOn;
+  end
+  
+  sunOn=1;
+  ax3 = axes;
+  hold on;
+  numberOfColors = length(ax3.ColorOrder);
+  ax3.ColorOrderIndex = 1;
+  subplot(5,1,3)
+  for i=1:size(altis,2)
+    %Q3=plot(time,squeeze(ealt(i,3,1,:)),time,squeeze(ealt(i,3,2,:)),time,squeeze(ealt(i,3,3,:))); %% plot e of 2nd satellite
+    Q3=plot(time/2/pi*meanMotion,squeeze(ealt(i,3,2,:))); %% plot e of 2nd satellite
+    hold on
+    if sunOn
+      %ax3.ColorOrderIndex = mod(ax3.ColorOrderIndex-2,numberOfColors)+1; % keep same color
+      %Q3.ColorOrderIndex = Q3.ColorOrderIndex-1
+    else
+      %Q3.LineStyle='--';
+    end
+    sunOn=1-sunOn;
+  end
+  hold off;  
+
+  sunOn=1;
+  ax4 = axes;
+  hold on;
+  numberOfColors = length(ax4.ColorOrder);
+  ax4.ColorOrderIndex = 1;
+  subplot(5,1,4)
+  for i=1:size(altis,2)
+    %Q3=plot(time,squeeze(ealt(i,3,1,:)),time,squeeze(ealt(i,3,2,:)),time,squeeze(ealt(i,3,3,:))); %% plot e of 2nd satellite
+    Q4=plot(time/2/pi*meanMotion,squeeze(sum(ealt(i,1:3,2,:)))); %% plot e of 2nd satellite
+    hold on
+    if sunOn
+      %ax4.ColorOrderIndex = mod(ax3.ColorOrderIndex-2,numberOfColors)+1; % keep same color
+      %Q4.ColorOrderIndex = Q3.ColorOrderIndex-1
+    else
+      %Q4.LineStyle='--';
+    end
+    sunOn=1-sunOn;
+  end
+  hold off;  
+
+  sunOn=1;
+  ax5 = axes;
+  hold on;
+  numberOfColors = length(ax5.ColorOrder);
+  ax5.ColorOrderIndex = 1;
+  subplot(5,1,5)
+  for i=1:size(altis,2)
+    %Q3=plot(time,squeeze(ealt(i,3,1,:)),time,squeeze(ealt(i,3,2,:)),time,squeeze(ealt(i,3,3,:))); %% plot e of 2nd satellite
+    Q5=plot(time/2/pi*meanMotion,squeeze(sum(sum(ealt(i,1:3,:,:))))); %% plot e of 2nd satellite
+    hold on
+    if sunOn
+      %ax4.ColorOrderIndex = mod(ax3.ColorOrderIndex-2,numberOfColors)+1; % keep same color
+      %Q4.ColorOrderIndex = Q3.ColorOrderIndex-1
+    else
+      %Q4.LineStyle='--';
+    end
+    sunOn=1-sunOn;
+  end
+  hold off;  
+end
+
+return
+%}
+%----------------
+
 
 %% results' plotting
 plotting(sst(7:9,:,:),sst(1:6,:,:),refPosChange,time,ns,meanMotion,u,e);
